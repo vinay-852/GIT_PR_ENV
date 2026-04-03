@@ -56,6 +56,8 @@ class CloseReason(str, Enum):
 
 
 class ActionType(str, Enum):
+    REQUEST_INFO = "request_info"
+    PROVIDE_INFO = "provide_info"
     READ_ISSUE = "read_issue"
     READ_REPO_RULES = "read_repo_rules"
     READ_LABEL_DEFINITIONS = "read_label_definitions"
@@ -69,7 +71,6 @@ class ActionType(str, Enum):
     SET_PRIORITY = "set_priority"
     SET_MILESTONE = "set_milestone"
     COMMENT = "comment"
-    REQUEST_INFO = "request_info"
     MARK_DUPLICATE = "mark_duplicate"
     CLOSE_ISSUE = "close_issue"
     REOPEN_ISSUE = "reopen_issue"
@@ -277,6 +278,7 @@ class IssueTriageState(BaseModel):
     progress_metrics: Dict[str, float] = Field(default_factory=dict)
     consecutive_read_actions: int = 0
     assignee_change_count: int = 0
+    provided_fields: Dict[str, str] = Field(default_factory=dict)
 
     metadata: Dict[str, str] = Field(default_factory=dict)
 
@@ -291,6 +293,11 @@ class ReadIssueAction(BaseModel):
     type: Literal[ActionType.READ_ISSUE] = ActionType.READ_ISSUE
     issue_id: str
 
+class ProvideInfoAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[ActionType.PROVIDE_INFO] = ActionType.PROVIDE_INFO
+    fields: Dict[str, str] = Field(default_factory=dict)
 
 class ReadRepoRulesAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -493,6 +500,8 @@ Action = Annotated[
         ReadLabelDefinitionsAction,
         ReadTeamRoutingAction,
         ReadAssigneePoolAction,
+        RequestInfoAction,
+        ProvideInfoAction,
         ReadMilestonesAction,
         SearchSimilarIssuesAction,
         AddLabelAction,
@@ -530,6 +539,7 @@ class Observation(BaseModel):
     pending_missing_fields: List[str] = Field(default_factory=list)
     objective_summary: List[str] = Field(default_factory=list)
     progress_metrics: Dict[str, float] = Field(default_factory=dict)
+    provided_fields: Dict[str, str] = Field(default_factory=dict)
     remaining_steps: int = 0
     step_count: int = 0
     done: bool = False
@@ -640,5 +650,8 @@ def build_initial_state(
         internal_score_cache=None,
         last_action_valid=True,
         last_action_message="",
+        provided_fields={},
         metadata={},
     )
+
+State = IssueTriageState

@@ -1,0 +1,156 @@
+{
+  "repo_id": "ai-joe-git/pocket-tts-server",
+  "repo_name": "Pocket TTS Server",
+  "source_url": "https://github.com/ai-joe-git/pocket-tts-server",
+  "source_kind": "mixed",
+  "version": "v1",
+  "strict_mode": true,
+  "labels": {
+    "type": ["type:bug", "type:question", "type:docs", "type:enhancement"],
+    "severity": ["severity:low", "severity:medium", "severity:high", "severity:critical"],
+    "component": [
+      "component:voice-ui",
+      "component:voice-cloning",
+      "component:catalog-voices",
+      "component:api",
+      "component:install",
+      "component:settings"
+    ],
+    "status": ["status:new", "status:triaged", "status:needs-info", "status:resolved", "status:closed"],
+    "priority": ["priority:p0", "priority:p1", "priority:p2", "priority:p3"]
+  },
+  "severity_policy": {
+    "bug": "severity:medium",
+    "install_failure": "severity:high",
+    "voice_selection_failure": "severity:high",
+    "docs_confusion": "severity:low"
+  },
+  "priority_policy": {
+    "bug": "priority:p1",
+    "question": "priority:p2",
+    "docs": "priority:p3",
+    "enhancement": "priority:p2"
+  },
+  "routing_rules": {
+    "voice-ui": ["maintainer"],
+    "voice-cloning": ["maintainer"],
+    "catalog-voices": ["maintainer"],
+    "api": ["maintainer"],
+    "install": ["maintainer"],
+    "settings": ["maintainer"]
+  },
+  "milestones": ["v1.0", "v1.1", "bugfix", "docs"],
+  "missing_info": {
+    "bug": ["steps_to_reproduce", "expected_behavior", "actual_behavior", "environment"],
+    "install_failure": ["steps_to_reproduce", "installation_method", "error_message", "environment"],
+    "voice_selection_failure": ["steps_to_reproduce", "selected_voice", "expected_behavior", "actual_behavior", "error_message"],
+    "question": ["question_details"],
+    "docs_confusion": ["which_step_is_unclear", "expected_docs_location"]
+  },
+  "duplicate_policy": {
+    "label": "status:duplicate",
+    "action": "mark_duplicate_and_close"
+  },
+  "closure_policy": ["resolved", "duplicate", "invalid", "wontfix"],
+  "response_templates": {
+    "missing_info": "Thanks for the report. Please provide: {fields}.",
+    "duplicate": "This appears to duplicate #{issue_id}.",
+    "closed": "Closing this issue as {reason}."
+  },
+  "label_definitions": [
+    {
+      "name": "type:bug",
+      "category": "type",
+      "description": "Something does not work as expected."
+    },
+    {
+      "name": "type:question",
+      "category": "type",
+      "description": "User needs guidance on how to use the app."
+    },
+    {
+      "name": "type:docs",
+      "category": "type",
+      "description": "Docs are unclear or incomplete."
+    },
+    {
+      "name": "type:enhancement",
+      "category": "type",
+      "description": "Improvement request."
+    },
+    {
+      "name": "component:voice-ui",
+      "category": "component",
+      "description": "Web UI for voice selection and chat."
+    },
+    {
+      "name": "component:voice-cloning",
+      "category": "component",
+      "description": "Voice cloning flow and weights download behavior."
+    },
+    {
+      "name": "component:catalog-voices",
+      "category": "component",
+      "description": "Built-in voice catalog and preset voice selection."
+    },
+    {
+      "name": "component:install",
+      "category": "component",
+      "description": "Installation and local setup."
+    },
+    {
+      "name": "component:settings",
+      "category": "component",
+      "description": "LLM and app configuration screens."
+    }
+  ],
+  "team_routing_rules": [
+    {
+      "component": "voice-ui",
+      "assigned_team": "core",
+      "assignee_candidates": ["maintainer"],
+      "default_milestone": "v1.1"
+    },
+    {
+      "component": "voice-cloning",
+      "assigned_team": "core",
+      "assignee_candidates": ["maintainer"],
+      "default_milestone": "bugfix"
+    },
+    {
+      "component": "catalog-voices",
+      "assigned_team": "core",
+      "assignee_candidates": ["maintainer"],
+      "default_milestone": "bugfix"
+    },
+    {
+      "component": "install",
+      "assigned_team": "core",
+      "assignee_candidates": ["maintainer"],
+      "default_milestone": "docs"
+    }
+  ],
+  "assignee_pool": ["maintainer"],
+  "team_map": {
+    "core": ["maintainer"]
+  },
+  "required_fields_by_issue_type": {
+    "bug": ["steps_to_reproduce", "expected_behavior", "actual_behavior", "environment"],
+    "question": ["question_details"],
+    "docs": ["which_step_is_unclear"],
+    "enhancement": ["desired_behavior"]
+  },
+  "label_aliases": {
+    "bug": "type:bug",
+    "question": "type:question",
+    "docs": "type:docs",
+    "enhancement": "type:enhancement",
+    "voice cloning": "component:voice-cloning",
+    "catalog voices": "component:catalog-voices"
+  },
+  "metadata": {
+    "issue_3_focus": "default voice selection versus voice cloning",
+    "ui_hint": "select a voice from the sidebar / voice list rather than uploading a cloning sample",
+    "api_hint": "voices endpoint exists for listing available voices"
+  }
+}

@@ -1,77 +1,21 @@
 from __future__ import annotations
 
-import os
 import json
-from typing import Any, Dict, List, Literal, Optional
+import os
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 from openai import OpenAI
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import TypeAdapter, ValidationError
+
+from envs.GitHubIssueTriageManager.models import Action, ActionType
 
 load_dotenv()
 
 API_KEY = os.getenv("OPENAI_API_KEY")
 BASE_URL = os.getenv("API_BASE_URL")
 
-
-class LLMAction(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    type: Literal[
-        "read_issue",
-        "read_repo_rules",
-        "read_label_definitions",
-        "read_team_routing",
-        "read_assignee_pool",
-        "read_milestones",
-        "search_similar_issues",
-        "add_label",
-        "remove_label",
-        "assign_user",
-        "set_priority",
-        "set_milestone",
-        "comment",
-        "request_info",
-        "mark_duplicate",
-        "close_issue",
-        "reopen_issue",
-        "noop",
-    ]
-
-    issue_id: Optional[str] = None
-    query: Optional[str] = None
-    label: Optional[str] = None
-    username: Optional[str] = None
-    priority: Optional[str] = None
-    milestone: Optional[str] = None
-    text: Optional[str] = None
-    fields: Optional[List[str]] = None
-    reason: Optional[str] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def normalize_input(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-
-        data = dict(data)
-
-        if "type" not in data:
-            if "action" in data:
-                data["type"] = data.pop("action")
-            elif "action_type" in data:
-                data["type"] = data.pop("action_type")
-
-        payload = data.pop("action_payload", None)
-        if isinstance(payload, dict):
-            for k, v in payload.items():
-                data.setdefault(k, v)
-
-        for k in ["outcome", "success", "timestamp", "step_index"]:
-            data.pop(k, None)
-
-        return data
-
+ACTION_ADAPTER = TypeAdapter(Action)
 
 SYSTEM_PROMPT = """
 You are a GitHub Issue Triage Manager agent operating inside a strict Pydantic-validated action environment.
@@ -83,41 +27,56 @@ Hard requirements:
 - The action discriminator key is "type", not "action".
 - Never output plain strings, nested wrappers, explanations, markdown, or extra keys.
 - Every action must include all required fields for that action.
-- In particular:
-  - read_issue MUST include "issue_id"
-  - request_info MUST include "fields"
-  - add_label MUST include "label"
-  - remove_label MUST include "label"
-  - assign_user MUST include "username"
-  - set_priority MUST include "priority"
-  - set_milestone MUST include "milestone"
-  - comment MUST include "text"
-  - mark_duplicate MUST include "issue_id"
-  - close_issue MUST include "reason"
-  - reopen_issue MUST include "reason"
+- Use only these exact action type values:
+  read_issue
+  read_repo_rules
+  read_label_definitions
+  read_team_routing
+  read_assignee_pool
+  read_milestones
+  search_similar_issues
+  add_label
+  remove_label
+  assign_user
+  set_priority
+  set_milestone
+  comment
+  request_info
+  provide_info
+  mark_duplicate
+  close_issue
+  reopen_issue
+  noop
+
+Field requirements:
+- read_issue MUST include "issue_id"
+- request_info MUST include "fields"
+- provide_info MUST include "fields"
+- add_label MUST include "label"
+- remove_label MUST include "label"
+- assign_user MUST include "username"
+- set_priority MUST include "priority"
+- set_milestone MUST include "milestone"
+- comment MUST include "text"
+- mark_duplicate MUST include "issue_id"
+- close_issue MUST include "reason"
+- reopen_issue MUST include "reason"
 
 Context rules:
-- The current issue context is already available to you; use the current issue_id when required.
 - Read the issue and repo rules early if you need context before taking a triage action.
-- If required information is missing, request it with REQUEST_INFO and list only the missing fields.
-- If a strong duplicate is present, use MARK_DUPLICATE with the correct issue_id.
+- If required information is missing, choose REQUEST_INFO and list only the missing fields.
+- If a strong duplicate is present, choose MARK_DUPLICATE with the correct issue_id.
 - Follow repo rules for labels, priority, milestone, severity, routing, and closure.
 - Take only one action per step.
-
-Reasoning rules:
-- Prefer valid, minimal, deterministic actions.
-- Never invent missing values.
-- Never emit an action that would fail schema validation.
-- Before returning, ensure the JSON validates against the Action schema.
+- Keep COMMENT short and focused.
 """.strip()
 
 
 class IssueTriageAgent:
     def __init__(self) -> None:
         self.api_base_url = BASE_URL
-        self.api_key = API_KEY 
-        self.model_name = os.getenv("MODEL_NAME", "oca/gpt5")
-
+        self.api_key = API_KEY
+        self.model_name = os.getenv("MODEL_NAME", "oca/gpt-5")
         self.temperature = float(os.getenv("TEMPERATURE", "0.2"))
         self.max_tokens = int(os.getenv("MAX_OUTPUT_TOKENS", "200"))
 
@@ -145,11 +104,67 @@ class IssueTriageAgent:
             },
         ]
 
+    def _strip_code_fences(self, text: str) -> str:
+        text = text.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if len(lines) >= 2 and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip().startswith("```"):
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+        return text
+
+    def _extract_json_object(self, text: str) -> str:
+        text = self._strip_code_fences(text)
+
+        if text.startswith("{") and text.endswith("}"):
+            return text
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return text[start : end + 1]
+
+        raise ValueError("No JSON object found in model output.")
+
+    def _sanitize_action_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        data = dict(data)
+
+        if "type" not in data:
+            if "action" in data:
+                data["type"] = data.pop("action")
+            elif "action_type" in data:
+                data["type"] = data.pop("action_type")
+
+        payload = data.pop("action_payload", None)
+        if isinstance(payload, dict):
+            for key, value in payload.items():
+                data.setdefault(key, value)
+
+        for key in [
+            "outcome",
+            "success",
+            "timestamp",
+            "step_index",
+            "message",
+            "analysis",
+            "thought",
+            "reasoning",
+        ]:
+            data.pop(key, None)
+
+        return data
+
     def _parse_action_json(self, raw_text: str) -> Dict[str, Any]:
-        raw_text = raw_text.strip()
-        action = LLMAction.model_validate_json(raw_text)
-        payload = action.model_dump(exclude_none=True)
-        return payload if "type" in payload else {"type": "noop"}
+        json_text = self._extract_json_object(raw_text)
+        data = json.loads(json_text)
+        if not isinstance(data, dict):
+            raise ValueError("Model output was not a JSON object.")
+
+        sanitized = self._sanitize_action_dict(data)
+        action = ACTION_ADAPTER.validate_python(sanitized)
+        return action.model_dump(mode="json", exclude_none=True)
 
     def next_action(self, observation: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -162,20 +177,16 @@ class IssueTriageAgent:
             )
 
             parts: List[str] = []
-
             for chunk in stream:
                 delta = chunk.choices[0].delta.content
                 if delta:
                     parts.append(delta)
 
             raw_text = "".join(parts).strip()
-            print(f"[Debug]LLM Raw Stream Output: {raw_text}")
+            print(f"[Debug] LLM Raw Stream Output: {raw_text}")
 
             return self._parse_action_json(raw_text)
 
         except Exception as e:
             print(f"Error occurred in next_action_streaming: {e}")
-            return self._fallback()
-
-    def _fallback(self) -> Dict[str, Any]:
-        return {"type": "noop"}
+            return {"type": ActionType.NOOP.value}

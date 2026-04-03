@@ -521,6 +521,26 @@ def _handle_search_similar_issues(state: IssueTriageState, action: SearchSimilar
         notes=[text] if text else [],
     )
 
+def _handle_provide_info(state: IssueTriageState, action: ProvideInfoAction) -> TransitionResult:
+    changed: List[str] = []
+
+    for key, value in action.fields.items():
+        value = value.strip()
+        if value:
+            state.provided_fields[key] = value
+            changed.append(f"provided_fields.{key}")
+
+    if state.hidden_target:
+        state.pending_missing_fields = [
+            f for f in state.pending_missing_fields if f not in action.fields
+        ]
+
+    return TransitionResult(
+        action_valid=True,
+        action_effect="info_provided",
+        changed_fields=changed,
+        notes=[f"Stored {len(changed)} provided fields."],
+    )
 
 def apply_action_to_state(state: IssueTriageState, action: Action) -> TransitionResult:
     """
@@ -565,6 +585,8 @@ def apply_action_to_state(state: IssueTriageState, action: Action) -> Transition
         result = _handle_comment(state, action)  # type: ignore[arg-type]
     elif action.type == ActionType.REQUEST_INFO:
         result = _handle_request_info(state, action)  # type: ignore[arg-type]
+    elif action.type == ActionType.PROVIDE_INFO:
+        result = _handle_provide_info(state, action)  # type: ignore[arg-type]
     elif action.type == ActionType.MARK_DUPLICATE:
         result = _handle_mark_duplicate(state, action)  # type: ignore[arg-type]
     elif action.type == ActionType.CLOSE_ISSUE:

@@ -123,6 +123,7 @@ def build_observation(state: IssueTriageState) -> Observation:
         pending_missing_fields=list(state.pending_missing_fields),
         objective_summary=_objective_summary(state),
         progress_metrics=_progress_metrics(state),
+        provided_fields=dict(state.provided_fields),
         remaining_steps=remaining_steps,
         step_count=state.step_count,
         done=state.done,
