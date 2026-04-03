@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 from urllib.request import Request, urlopen
 
-from ..model import (
+from  ..models  import (
     DuplicateCandidate,
     HiddenGradingTarget,
     IssueComment,

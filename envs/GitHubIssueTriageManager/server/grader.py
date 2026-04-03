@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Set
 
-from ..model import GraderResult, HiddenGradingTarget, IssueStatus, IssueTriageState
+from  ..models  import GraderResult, HiddenGradingTarget, IssueStatus, IssueTriageState
 
 
 def _labels_set(state: IssueTriageState) -> Set[str]:

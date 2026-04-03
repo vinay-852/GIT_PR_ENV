@@ -6,7 +6,7 @@ from typing import List, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..model import (
+from  ..models  import (
     Action,
     ActionType,
     AddLabelAction,

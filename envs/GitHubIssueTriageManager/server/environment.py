@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from ..model import (
+from  ..models  import (
     Action,
     Difficulty,
     HistoryEntry,

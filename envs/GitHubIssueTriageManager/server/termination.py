@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Set
 
-from ..model import IssueStatus, IssueTriageState
+from  ..models  import IssueStatus, IssueTriageState
 
 
 def _all_required_labels_present(state: IssueTriageState) -> bool:

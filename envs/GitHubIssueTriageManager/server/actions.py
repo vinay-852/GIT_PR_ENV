@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, Union
 
 from pydantic import TypeAdapter
 
-from ..model import Action, ActionType, validate_action_payload
+from  ..models  import Action, ActionType, validate_action_payload
 
 ACTION_ADAPTER = TypeAdapter(Action)
 

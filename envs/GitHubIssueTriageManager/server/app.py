@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import Body, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..model import Observation, StatePayload, StepResult
+from  ..models  import Observation, StatePayload, StepResult
 from .environment import GitHubIssueTriageEnvironment
 
 
