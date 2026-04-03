@@ -1,5 +1,5 @@
 spec_version: 1
-name: GitHubIssueTriageManager
+name: GitHubIssueTriage
 type: space
 runtime: fastapi
 app: server.app:app
