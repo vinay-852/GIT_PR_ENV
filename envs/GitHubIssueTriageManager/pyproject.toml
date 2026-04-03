@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "GitHubIssueTriageManager"
+version = "0.1.0"
+description = "GitHub Issue Triage Manager environment"
+dependencies = [
+    "openenv-core",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "openai",
+    "numpy",
+    "python-dotenv",
+]
