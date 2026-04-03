@@ -19,12 +19,12 @@ from ..models import (
     StepInfo,
     StepResult,
 )
-from .actions import ParsedActionResult, parse_and_validate_action
-from .loader import load_episode_bundle, load_episode_bundle_from_paths
-from .observation import build_observation
-from .reward import compute_reward
-from .termination import is_episode_done
-from .transitions import apply_action_to_state
+from server.actions import ParsedActionResult, parse_and_validate_action
+from server.loader import load_episode_bundle, load_episode_bundle_from_paths
+from server.observation import build_observation
+from server.reward import compute_reward
+from server.termination import is_episode_done
+from server.transitions import apply_action_to_state
 
 
 class GitHubIssueTriageEnvironment(Environment):

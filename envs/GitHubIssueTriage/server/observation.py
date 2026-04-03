@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from  ..models  import IssueTriageState, Observation
+from  models  import IssueTriageState, Observation
 
 
 def _available_labels(state: IssueTriageState) -> List[str]:
