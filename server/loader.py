@@ -27,6 +27,16 @@ from models import (
 
 JsonLike = Dict[str, Any]
 
+
+def _validate_model(model_cls, data: Any):
+    validator = getattr(model_cls, "model_validate", None)
+    if callable(validator):
+        return validator(data)
+    parser = getattr(model_cls, "parse_obj", None)
+    if callable(parser):
+        return parser(data)
+    raise AttributeError(f"{model_cls.__name__} does not support model validation.")
+
 _GITHUB_ISSUE_WEB_RE = re.compile(
     r"^https?://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/issues/(?P<number>\d+)(?:/.*)?$"
 )
@@ -359,7 +369,7 @@ def load_repo_rules(repo_rules_path: Union[str, Path]) -> RepoRules:
     payload = _normalize_repo_rules_payload(raw)
     if not isinstance(payload, dict):
         raise ValueError("repo_rules must be a JSON object.")
-    return RepoRules.model_validate(payload)
+    return _validate_model(RepoRules, payload)
 
 
 def load_tasks(tasks_path: Union[str, Path]) -> List[TaskSpec]:
@@ -373,7 +383,7 @@ def load_tasks(tasks_path: Union[str, Path]) -> List[TaskSpec]:
         if not isinstance(item, dict):
             continue
         task_data = {k: v for k, v in item.items() if k in task_field_names}
-        tasks.append(TaskSpec.model_validate(task_data))
+        tasks.append(_validate_model(TaskSpec, task_data))
 
     return tasks
 
@@ -411,7 +421,7 @@ def _parse_hidden_target(raw_task: dict) -> Optional[HiddenGradingTarget]:
     if isinstance(hidden, HiddenGradingTarget):
         return hidden.model_copy(deep=True)
     if isinstance(hidden, dict):
-        return HiddenGradingTarget.model_validate(hidden)
+        return _validate_model(HiddenGradingTarget, hidden)
     raise ValueError("hidden_target must be a dict or HiddenGradingTarget.")
 
 
@@ -424,7 +434,7 @@ def _parse_candidate_duplicates(raw_task: dict) -> List[DuplicateCandidate]:
         if isinstance(item, DuplicateCandidate):
             candidates.append(item.model_copy(deep=True))
         elif isinstance(item, dict):
-            candidates.append(DuplicateCandidate.model_validate(item))
+            candidates.append(_validate_model(DuplicateCandidate, item))
     return candidates
 
 
@@ -520,7 +530,7 @@ def load_episode_bundle(
             continue
 
         task_data = {k: v for k, v in raw_task.items() if k in task_field_names}
-        task = TaskSpec.model_validate(task_data)
+        task = _validate_model(TaskSpec, task_data)
 
         if task.issue_id not in issue_index:
             raise ValueError(
@@ -593,7 +603,7 @@ def load_single_episode(
 
     issue_obj = _load_issue_item(issue, live_github=live_github)
 
-    dup_objs = [DuplicateCandidate.model_validate(x) for x in (candidate_duplicates or [])]
+    dup_objs = [_validate_model(DuplicateCandidate, x) for x in (candidate_duplicates or [])]
     hidden_target = _parse_hidden_target(task)
 
     return build_initial_state(

@@ -1,6 +1,7 @@
 # envs/your_env/server/environment.py
 from __future__ import annotations
 
+import os
 import random
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,8 @@ from server.transitions import apply_action_to_state
 class GitHubIssueTriageEnvironment(Environment):
     SUPPORTS_CONCURRENT_SESSIONS = True
 
+    DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
     def __init__(
         self,
         *,
@@ -54,6 +57,9 @@ class GitHubIssueTriageEnvironment(Environment):
         self._difficulty_positions: Dict[Difficulty, int] = {}
 
         if not self._episodes_source:
+            if data_dir is None:
+                data_dir = os.getenv("GITHUB_ISSUE_TRIAGE_DATA_DIR") or self.DEFAULT_DATA_DIR
+
             if data_dir is not None:
                 self._episodes_source = load_episode_bundle_from_paths(
                     data_dir,
@@ -209,6 +215,7 @@ class GitHubIssueTriageEnvironment(Environment):
         if state.done:
             obs = build_observation(state)
             reward = compute_reward(state)
+            obs.reward = reward.total
             reward_dump = reward.model_dump()
             reward_components = (
                 reward_dump.pop("components", {})
@@ -260,6 +267,7 @@ class GitHubIssueTriageEnvironment(Environment):
 
             reward = compute_reward(state)
             obs = build_observation(state)
+            obs.reward = reward.total
             state.internal_score_cache = reward.total
 
             reward_dump = reward.model_dump()
@@ -298,6 +306,7 @@ class GitHubIssueTriageEnvironment(Environment):
 
         reward = compute_reward(state)
         obs = build_observation(state)
+        obs.reward = reward.total
 
         transition_notes = list(getattr(transition, "notes", []))
         transition_effect = str(getattr(transition, "action_effect", ""))

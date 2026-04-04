@@ -54,6 +54,8 @@ Server endpoints:
 - `/health`: health check
 - `/ws`: websocket endpoint for session-based stepping
 
+The web UI loads the bundled demo episode by default, so `/web` opens with a working reset state out of the box. To point the server at a different bundle, set `GITHUB_ISSUE_TRIAGE_DATA_DIR` to a folder containing `repo_rules.json`, `tasks.json`, and `issues.json` before starting the app.
+
 ### 3. Build and run with Docker (optional)
 
 ```bash

@@ -531,6 +531,7 @@ class Observation(BaseModel):
     task: TaskSpec
     issue: IssueSnapshot
     repo_rules: RepoRules
+    reward: Optional[float] = None
     available_labels: List[str] = Field(default_factory=list)
     available_assignees: List[str] = Field(default_factory=list)
     available_milestones: List[str] = Field(default_factory=list)
