@@ -138,14 +138,35 @@ def _grade_comment(state: IssueTriageState, target: HiddenGradingTarget) -> tupl
 
 def grade_episode(state: IssueTriageState | Any) -> GraderResult:
     """
-    Deterministic grader for a completed or in-progress episode.
+    Advanced deterministic grader supporting both IssueTriageState and Observation objects.
 
     Score range: 0.0 to 1.0
+    
+    Scoring breakdown:
+      - Labels: 35% (gold label coverage)
+      - Assignee: 20% (presence)
+      - Priority/Severity/Component: 20% (presence combined)
+      - Milestone: 10% (presence)
+      - Duplicate handling: 10% (if applicable)
+      - Step efficiency bonus: up to 5%
     """
-    # Some wrappers pass a state provider (e.g. env.state method) instead of the state object.
+    # Handle callable state providers
     if callable(state):
-        state = state()
+        try:
+            state = state()
+        except:
+            state = None
 
+    # Try to extract observation from state if it's nested
+    if hasattr(state, "observation") and not hasattr(state, "issue"):
+        state = state.observation
+
+    # Handle Observation objects (from remote sessions)
+    if hasattr(state, "issue") and hasattr(state, "task") and not hasattr(state, "hidden_target"):
+        # This is an Observation, build a minimal scoring result from it
+        return _grade_observation(state)
+
+    # Validate state has required attributes
     if not hasattr(state, "hidden_target") or not hasattr(state, "issue"):
         return GraderResult(
             score=0.0,
@@ -162,31 +183,10 @@ def grade_episode(state: IssueTriageState | Any) -> GraderResult:
 
     target = state.hidden_target
     if target is None:
-        # Fallback grading when no hidden target exists.
-        score = 0.0
-        if state.issue.labels:
-            score += 0.2
-        if state.issue.assignees:
-            score += 0.2
-        if state.issue.priority is not None:
-            score += 0.2
-        if state.issue.milestone is not None:
-            score += 0.2
-        if state.issue.comments:
-            score += 0.2
-        return GraderResult(
-            score=max(0.0, min(1.0, score)),
-            matched_labels=list(state.issue.labels),
-            matched_assignee=bool(state.issue.assignees),
-            matched_priority=state.issue.priority is not None,
-            matched_milestone=state.issue.milestone is not None,
-            duplicate_matched=bool(state.issue.linked_duplicates),
-            missing_fields_requested=bool(state.requested_fields),
-            closed_correctly=state.issue.status == IssueStatus.CLOSED,
-            comment_accepted=bool(state.issue.comments),
-            notes=["No hidden_target present; using fallback grading."],
-        )
+        # Fallback grading when no hidden target exists
+        return _grade_observation_without_target(state)
 
+    # Full scoring with hidden target
     labels_ok, labels_partial, matched_labels, label_notes = _grade_labels(state, target)
     assignee_ok, assignee_notes = _grade_assignee(state, target)
     priority_ok, priority_notes = _grade_priority(state, target)
@@ -198,20 +198,27 @@ def grade_episode(state: IssueTriageState | Any) -> GraderResult:
     closure_ok, closure_bonus, closure_notes = _grade_closure(state, target)
     comment_ok, comment_notes = _grade_comment(state, target)
 
+    # Advanced scoring with weighted components
     score = 0.0
-    score += 0.18 if labels_ok else 0.18 * labels_partial
-    score += 0.18 if assignee_ok else 0.0
-    score += 0.12 if priority_ok else 0.0
-    score += 0.10 if milestone_ok else 0.0
-    score += 0.10 if severity_ok else 0.0
-    score += 0.10 if component_ok else 0.0
-    score += 0.12 if duplicate_ok else 0.0
-    score += 0.06 if missing_info_ok else 0.06 * missing_info_partial
-    score += 0.04 if closure_ok else 0.0
-    score += 0.02 if comment_ok else 0.0
-    score += closure_bonus
+    score += 0.35 * (1.0 if labels_ok else labels_partial)  # 35% for labels
+    score += 0.20 if assignee_ok else 0.0  # 20% for assignee
+    score += 0.20 * (
+        (1.0 if priority_ok else 0.0)
+        + (1.0 if severity_ok else 0.0)
+        + (1.0 if component_ok else 0.0)
+    ) / 3.0  # 20% for priority/severity/component
+    score += 0.10 if milestone_ok else 0.0  # 10% for milestone
+    score += 0.10 if duplicate_ok else 0.0  # 10% for duplicate handling
+    
+    # Step efficiency bonus (up to 5%)
+    max_steps = getattr(state, "max_steps", 10)
+    step_count = getattr(state, "step_count", 0)
+    if max_steps > 0 and step_count > 0:
+        efficiency = max(0.0, 1.0 - (step_count / max_steps))
+        score += 0.05 * efficiency
 
     score = max(0.0, min(1.0, score))
+    score += closure_bonus  # Add closure bonus on top
 
     notes: List[str] = []
     for bucket in (
@@ -242,6 +249,100 @@ def grade_episode(state: IssueTriageState | Any) -> GraderResult:
         comment_accepted=comment_ok,
         notes=notes,
     )
+
+
+def _grade_observation_without_target(state: Any) -> GraderResult:
+    """Grade an IssueTriageState without hidden target using observable state."""
+    issue = getattr(state, "issue", None)
+    if not issue:
+        return GraderResult(
+            score=0.0,
+            matched_labels=[],
+            matched_assignee=False,
+            matched_priority=False,
+            matched_milestone=False,
+            duplicate_matched=False,
+            missing_fields_requested=False,
+            closed_correctly=False,
+            comment_accepted=False,
+            notes=["No issue data available for grading."],
+        )
+
+    # Score based on observable triage actions taken
+    score = 0.0
+    notes: List[str] = []
+
+    label_count = len(getattr(issue, "labels", []))
+    if label_count > 0:
+        score += 0.35 * min(1.0, label_count / 3.0)
+    else:
+        notes.append("No labels added.")
+
+    assignees = getattr(issue, "assignees", [])
+    if assignees:
+        score += 0.20
+    else:
+        notes.append("No assignee set.")
+
+    if getattr(issue, "priority", None):
+        score += 0.067
+    if getattr(issue, "milestone", None):
+        score += 0.067
+    if getattr(issue, "severity", None):
+        score += 0.067
+    if getattr(issue, "component", None):
+        score += 0.067
+    else:
+        notes.append("Missing priority/severity/component/milestone.")
+
+    if getattr(issue, "linked_duplicates", []):
+        score += 0.10
+    if getattr(issue, "comments", []):
+        score += 0.05
+
+    # Efficiency bonus
+    max_steps = getattr(state, "max_steps", 10)
+    step_count = getattr(state, "step_count", 0)
+    if max_steps > 0 and step_count > 0:
+        efficiency = max(0.0, 1.0 - (step_count / max_steps))
+        score += 0.05 * efficiency
+
+    score = max(0.0, min(1.0, score))
+    if not notes:
+        notes.append("No hidden_target present; graded on observable state.")
+
+    return GraderResult(
+        score=score,
+        matched_labels=list(getattr(issue, "labels", [])),
+        matched_assignee=bool(assignees),
+        matched_priority=getattr(issue, "priority", None) is not None,
+        matched_milestone=getattr(issue, "milestone", None) is not None,
+        duplicate_matched=bool(getattr(issue, "linked_duplicates", [])),
+        missing_fields_requested=False,
+        closed_correctly=getattr(issue, "status", None) == IssueStatus.CLOSED,
+        comment_accepted=bool(getattr(issue, "comments", [])),
+        notes=notes,
+    )
+
+
+def _grade_observation(obs: Any) -> GraderResult:
+    """Grade an Observation object (from remote sessions) without hidden target."""
+    issue = getattr(obs, "issue", None)
+    if not issue:
+        return GraderResult(
+            score=0.0,
+            matched_labels=[],
+            matched_assignee=False,
+            matched_priority=False,
+            matched_milestone=False,
+            duplicate_matched=False,
+            missing_fields_requested=False,
+            closed_correctly=False,
+            comment_accepted=False,
+            notes=["Invalid observation: no issue data."],
+        )
+
+    return _grade_observation_without_target(obs)
 
 
 def is_success(state: IssueTriageState) -> bool:
