@@ -5,8 +5,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field
-
-from  models  import (
+import (
     Action,
     ActionType,
     AddLabelAction,

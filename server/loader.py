@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 from urllib.request import Request, urlopen
 
-from models import (
+import (
     ActionType,
     Difficulty,
     DuplicateCandidate,
@@ -599,11 +599,11 @@ def load_single_episode(
     repo_rules = load_repo_rules(repo_rules_path)
     task_field_names = set(TaskSpec.model_fields.keys())
     task_data = {k: v for k, v in task.items() if k in task_field_names}
-    task_obj = TaskSpec.model_validate(task_data)
+    task_obj = TaskSpec._validate_model(task_data)
 
     issue_obj = _load_issue_item(issue, live_github=live_github)
 
-    dup_objs = [_validate_model(DuplicateCandidate, x) for x in (candidate_duplicates or [])]
+    dup_objs = [TaskSpec._validate_model(DuplicateCandidate, x) for x in (candidate_duplicates or [])]
     hidden_target = _parse_hidden_target(task)
 
     return build_initial_state(

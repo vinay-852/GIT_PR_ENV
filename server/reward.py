@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Set
 
-from  models  import (
+import (
     CloseReason,
     HiddenGradingTarget,
     IssueStatus,
