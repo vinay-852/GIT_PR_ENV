@@ -121,6 +121,18 @@ python inference.py --issue-url https://github.com/OWNER/REPO/issues/123 --trans
 python inference.py --tasks-file data/tasks.json
 ```
 
+### Baseline scores
+
+The baseline scores below are a reference for the default model and task configuration.
+
+| Task ID              | Difficulty | Baseline Score | Steps |
+|----------------------|------------|----------------|-------|
+| triage_easy_api_p1   | easy       | 0.488          | 8     |
+| needs_info_sso       | medium     | 0.717          | 10    |
+| duplicate_ui_crash   | hard       | 0.688          | 10    |
+
+Use these values to compare different model settings, task changes, or prompt updates.
+
 ## Data Loading Patterns
 
 The environment supports three common ways to load episodes.
