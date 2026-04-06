@@ -182,7 +182,4 @@ openenv push --repo-id <your-namespace>/GitHubIssueTriageManager
     └── Dockerfile
 ```
 
-## Notes
 
-- The custom client in `client.py` now includes a websocket session helper and CLI entry point; for full triage action coverage, use the OpenEnv server API directly or construct actions from `models.py` in your own runner.
-- For live GitHub issue loading, set a token in `GITHUB_TOKEN` (or `GH_TOKEN`) to reduce rate-limit risk.
