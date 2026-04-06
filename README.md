@@ -11,61 +11,83 @@ tags:
   - openenv
 ---
 
-# GitHubIssueTriage Environment
+# 🧭 GitHubIssueTriage Environment
 
-GitHubIssueTriage is an OpenEnv environment for evaluating and training agents that triage GitHub issues.
+GitHubIssueTriage is an OpenEnv-based environment designed to train and evaluate agents on real-world GitHub issue triage workflows.
 
-Instead of an echo loop, each episode models realistic triage work:
-- Read issue details and repository policy
-- Apply labels, assignment, priority, and milestone
-- Request missing information
-- Mark duplicates or close/reopen when appropriate
-- Receive dense reward and deterministic grading against a hidden target
+Instead of a simple echo setup, this environment simulates practical issue triaging scenarios where agents must analyze, decide, and act based on repository rules.
 
-## What This Environment Simulates
+---
+
+## 🚀 Overview
+
+Each episode represents a realistic triage workflow where the agent is expected to:
+
+- Understand issue details and repository policies  
+- Apply labels, assign users, set priorities, and milestones  
+- Request missing information when needed  
+- Detect duplicates and decide when to close or reopen issues  
+- Optimize decisions using reward-based feedback  
+
+---
+
+## 🧩 Environment Structure
 
 Each episode includes:
-- `repo_rules`: canonical triage policy (labels, routing, missing-info rules, templates)
-- `issue`: the current issue snapshot
-- `task`: allowed actions, max steps, and goal type
-- `hidden_target`: gold triage outcome used for reward/grading
 
-Episode termination:
-- Max steps reached, or
-- Hidden target is fully satisfied
+- **repo_rules** → Defines triage policies (labels, workflows, templates)  
+- **issue** → Current issue snapshot  
+- **task** → Allowed actions, constraints, and objective  
+- **hidden_target** → Expected correct outcome for evaluation  
 
-## Quick Start
+### ⏹ Episode ends when:
+- Maximum steps are reached, or  
+- Hidden target is fully satisfied  
 
-### 1. Install dependencies
+---
+
+## ⚡ Quick Start
+
+### 1. Install Dependencies
 
 ```bash
 uv sync
 ```
 
-### 2. Run the server locally
+### 2. Run the Server
 
 ```bash
 uvicorn server.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Server endpoints:
-- `/web`: interactive OpenEnv web UI
-- `/docs`: FastAPI/OpenAPI docs
-- `/health`: health check
-- `/ws`: websocket endpoint for session-based stepping
+### 📌 Available Endpoints
 
-The web UI loads the bundled demo episode by default, so `/web` opens with a working reset state out of the box. To point the server at a different bundle, set `GITHUB_ISSUE_TRIAGE_DATA_DIR` to a folder containing `repo_rules.json`, `tasks.json`, and `issues.json` before starting the app.
+- `/web` → Interactive OpenEnv UI  
+- `/docs` → API documentation (FastAPI/OpenAPI)  
+- `/health` → Health check  
+- `/ws` → WebSocket endpoint  
 
-### 3. Build and run with Docker (optional)
+By default, `/web` loads a demo episode.  
+To use custom data, set:
+
+```bash
+GITHUB_ISSUE_TRIAGE_DATA_DIR=<your_data_folder>
+```
+
+---
+
+### 🐳 Optional: Run with Docker
 
 ```bash
 docker build -t github-issue-triage-env -f server/Dockerfile .
 docker run --rm -p 8000:8000 github-issue-triage-env
 ```
 
-## Configuration
+---
 
-Create a `.env` file in the repository root with your API and model settings:
+## ⚙️ Configuration
+
+Create a `.env` file in the root directory:
 
 ```dotenv
 OPENAI_API_KEY=YOUR_OPENAI_API_KEY
@@ -75,71 +97,74 @@ TEMPERATURE=0.8
 MAX_OUTPUT_TOKENS=200
 ```
 
-The code reads these values automatically via `dotenv` when `agent.py` starts.
+These values are automatically loaded using `dotenv` when `agent.py` runs.
 
-## Running Inference
+---
 
-The CLI is designed to run all tasks from `data/tasks.json` by default:
+## 🤖 Running Inference
+
+Run all tasks using:
 
 ```bash
 python inference.py
 ```
 
-This runs the local environment and prints a final comparison table with:
-- `Episode`
-- `Task ID`
-- `Difficulty`
-- `Score`
-- `Steps`
+### 📊 Output includes:
+- Episode  
+- Task ID  
+- Difficulty  
+- Score  
+- Steps  
 
-### Common CLI options
+---
 
-- `--repo-rules`: path to `repo_rules.json`
-- `--tasks-file`: path to `tasks.json` to run all task episodes
-- `--issue-file`: path to `issues.json` for single-issue fallback
-- `--issue-url`: GitHub issue URL to load a single live issue
-- `--live-github`: fetch issue data from GitHub for live URLs
-- `--transport`: `local` or `remote` (default: `local`)
-- `--base-url`: remote environment base URL when using `--transport remote`
-- `--max-steps`: override the maximum steps for generated episodes
+### 🔧 CLI Options
 
-### Example: run all local tasks
+- `--repo-rules` → Custom repo rules  
+- `--tasks-file` → Run specific tasks  
+- `--issue-file` → Single issue fallback  
+- `--issue-url` → Load GitHub issue directly  
+- `--live-github` → Fetch live data  
+- `--transport` → local or remote  
+- `--base-url` → Remote environment URL  
+- `--max-steps` → Override step limit  
 
+---
+
+### 🧪 Examples
+
+Run all tasks:
 ```bash
 python inference.py --transport local
 ```
 
-### Example: run a single issue URL
-
+Run a single issue:
 ```bash
 python inference.py --issue-url https://github.com/OWNER/REPO/issues/123 --transport local
 ```
 
-### Example: use a custom tasks file
-
+Use a custom tasks file:
 ```bash
 python inference.py --tasks-file data/tasks.json
 ```
 
-### Baseline scores
+---
 
-The baseline scores below are a reference for the default model and task configuration.
+## 📈 Baseline Scores
 
-| Task ID              | Difficulty | Baseline Score | Steps |
-|----------------------|------------|----------------|-------|
-| triage_easy_api_p1   | easy       | 0.488          | 8     |
-| needs_info_sso       | medium     | 0.717          | 10    |
-| duplicate_ui_crash   | hard       | 0.688          | 10    |
+| Task ID              | Difficulty | Score | Steps |
+|----------------------|------------|--------|-------|
+| triage_easy_api_p1   | easy       | 0.488  | 8     |
+| needs_info_sso       | medium     | 0.717  | 10    |
+| duplicate_ui_crash   | hard       | 0.688  | 10    |
 
-Use these values to compare different model settings, task changes, or prompt updates.
+Use these values to compare performance across models or configurations.
 
-## Data Loading Patterns
+---
 
-The environment supports three common ways to load episodes.
+## 📂 Data Loading Methods
 
-### A. Bundle from JSON files
-
-Use `repo_rules.json`, `tasks.json`, and `issues.json` together.
+### A. Load from JSON Bundle
 
 ```python
 from server.loader import load_episode_bundle
@@ -156,9 +181,9 @@ env = GitHubIssueTriageEnvironment(episodes=episodes)
 obs = env.reset()
 ```
 
-### B. Folder shortcut
+---
 
-If files are in one folder:
+### B. Load from Folder
 
 ```python
 from server.GitHubIssueTriage_environment import GitHubIssueTriageEnvironment
@@ -167,9 +192,9 @@ env = GitHubIssueTriageEnvironment(data_dir="data")
 obs = env.reset()
 ```
 
-### C. One-off episode from repo rules + issue URL
+---
 
-Useful for inference-style workflows against a single issue.
+### C. Load Single Issue
 
 ```python
 from server.loader import load_episode_from_source
@@ -186,51 +211,66 @@ env = GitHubIssueTriageEnvironment(episodes=[state], live_github=True)
 obs = env.reset()
 ```
 
-## Action Space
+---
 
-Key action types include:
-- Read actions: `read_issue`, `read_repo_rules`, `read_label_definitions`, `read_team_routing`, `read_assignee_pool`, `read_milestones`, `search_similar_issues`
-- Triage actions: `add_label`, `remove_label`, `assign_user`, `set_priority`, `set_milestone`
-- Communication actions: `comment`, `request_info`, `provide_info`
-- Lifecycle actions: `mark_duplicate`, `close_issue`, `reopen_issue`, `noop`
+## 🎯 Action Space
 
-Action payloads are validated by schema and policy constraints (allowed actions, valid labels, valid assignees, milestone checks, strict-mode label conflicts).
+### 🔍 Read Actions
+- read_issue, read_repo_rules, read_label_definitions, search_similar_issues
 
-## Reward and Grading
+### ⚙️ Triage Actions
+- add_label, remove_label, assign_user, set_priority, set_milestone
 
-Reward is dense and deterministic.
+### 💬 Communication Actions
+- comment, request_info, provide_info
 
-Main components include:
-- Label/type match
-- Severity/component match
-- Assignee/priority/milestone match
-- Missing-info request coverage
-- Duplicate handling
-- Closure correctness
-- Comment keyword quality
+### 🔄 Lifecycle Actions
+- mark_duplicate, close_issue, reopen_issue, noop
 
-Penalties are applied for invalid actions and destructive closures.
+All actions are validated against rules and constraints.
 
-Final episode quality can be evaluated with:
+---
+
+## 🧠 Reward System
+
+The reward system is dense and deterministic, based on:
+
+- Label accuracy  
+- Severity/component match  
+- Assignment and prioritization  
+- Missing information handling  
+- Duplicate detection  
+- Closure correctness  
+- Comment quality  
+
+### ❌ Penalties
+- Invalid actions  
+- Incorrect closures  
+
+---
+
+### 📏 Evaluation Example
 
 ```python
 from server.grader import grade_episode
 
-result = grade_episode(env._state)  # score in [0, 1]
+result = grade_episode(env._state)
 print(result.score, result.notes)
 ```
 
-## Hugging Face Spaces Deployment
+---
 
-From the repository root:
+## ☁️ Deployment (Hugging Face Spaces)
 
 ```bash
 openenv push --repo-id <your-namespace>/GitHubIssueTriageManager
 ```
 
-`openenv push` validates `openenv.yaml`, builds the Docker Space, and publishes the environment.
+This builds and deploys the environment automatically.
 
-## Project Structure
+---
+
+## 📁 Project Structure
 
 ```text
 .
@@ -251,5 +291,3 @@ openenv push --repo-id <your-namespace>/GitHubIssueTriageManager
     ├── transitions.py
     └── Dockerfile
 ```
-
-
