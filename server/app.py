@@ -59,7 +59,7 @@ app = create_app(
     ActionPayload,
     Observation,
     env_name="GitHubIssueTriage",
-    max_concurrent_envs=1,  # increase this number to allow more concurrent WebSocket sessions
+    max_concurrent_envs=2,  # increase this number to allow more concurrent WebSocket sessions
 )
 
 
@@ -122,10 +122,6 @@ def main(host: str = "0.0.0.0", port: int = 8000):
     uvicorn.run(app, host=host, port=port)
 
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8000)
-    args = parser.parse_args()
-    main(port=args.port)
+# if __name__ == "__main__":
+if __name__ == '__main__'):
+    main()
