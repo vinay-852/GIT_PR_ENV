@@ -63,6 +63,64 @@ docker build -t github-issue-triage-env -f server/Dockerfile .
 docker run --rm -p 8000:8000 github-issue-triage-env
 ```
 
+## Configuration
+
+Create a `.env` file in the repository root with your API and model settings:
+
+```dotenv
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+API_BASE_URL=https://api.groq.com/openai/v1
+MODEL_NAME=llama-3.3-70b-versatile
+TEMPERATURE=0.8
+MAX_OUTPUT_TOKENS=200
+```
+
+The code reads these values automatically via `dotenv` when `agent.py` starts.
+
+## Running Inference
+
+The CLI is designed to run all tasks from `data/tasks.json` by default:
+
+```bash
+python inference.py
+```
+
+This runs the local environment and prints a final comparison table with:
+- `Episode`
+- `Task ID`
+- `Difficulty`
+- `Score`
+- `Steps`
+
+### Common CLI options
+
+- `--repo-rules`: path to `repo_rules.json`
+- `--tasks-file`: path to `tasks.json` to run all task episodes
+- `--issue-file`: path to `issues.json` for single-issue fallback
+- `--issue-url`: GitHub issue URL to load a single live issue
+- `--live-github`: fetch issue data from GitHub for live URLs
+- `--transport`: `local` or `remote` (default: `local`)
+- `--base-url`: remote environment base URL when using `--transport remote`
+- `--max-steps`: override the maximum steps for generated episodes
+
+### Example: run all local tasks
+
+```bash
+python inference.py --transport local
+```
+
+### Example: run a single issue URL
+
+```bash
+python inference.py --issue-url https://github.com/OWNER/REPO/issues/123 --transport local
+```
+
+### Example: use a custom tasks file
+
+```bash
+python inference.py --tasks-file data/tasks.json
+```
+
 ## Data Loading Patterns
 
 The environment supports three common ways to load episodes.

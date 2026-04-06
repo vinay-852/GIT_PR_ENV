@@ -371,7 +371,18 @@ def _load_issue_item(item: Any, *, live_github: bool = False) -> IssueSnapshot:
 
             raise ValueError(f"Issue URL did not resolve to a JSON object: {item}")
 
-        raise ValueError(f"Unsupported string issue source: {item}")
+        # Not a URL, treat as file path
+        data = _load_json_maybe_github(item)
+        if isinstance(data, dict):
+            if "issues" in data and isinstance(data["issues"], list) and data["issues"]:
+                # Assume issues.json format, pick the first issue
+                issue_data = data["issues"][0]
+            else:
+                # Assume single issue dict
+                issue_data = data
+            return _normalize_issue_snapshot(issue_data)
+
+        raise ValueError(f"Issue file did not contain a JSON object: {item}")
 
     if isinstance(item, dict):
         issue_url = item.get("issue_url") or item.get("url")
