@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Literal, Optional, Union, Annotated, Tuple
+import math
+from typing import Any, ClassVar, Dict, Iterable, List, Literal, Optional, Union, Annotated, Tuple
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 class Difficulty(str, Enum):
@@ -594,6 +595,8 @@ class StepResult(BaseModel):
 class GraderResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    SCORE_EPSILON: ClassVar[float] = 1e-3
+
     score: float = Field(ge=0.0, le=1.0)
     matched_labels: List[str] = Field(default_factory=list)
     matched_assignee: bool = False
@@ -604,6 +607,21 @@ class GraderResult(BaseModel):
     closed_correctly: bool = False
     comment_accepted: bool = False
     notes: List[str] = Field(default_factory=list)
+
+    @field_validator("score", mode="before")
+    @classmethod
+    def _normalize_score(cls, value: Any) -> float:
+        """Normalize score into strict open interval (0, 1) by default."""
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            numeric = 0.5
+
+        if not math.isfinite(numeric):
+            numeric = 0.5
+
+        eps = cls.SCORE_EPSILON
+        return min(1.0 - eps, max(eps, numeric))
 
 
 # -----------------------------

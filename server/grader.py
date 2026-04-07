@@ -33,9 +33,15 @@ def _matched_comment_keywords(state: IssueTriageState, keywords: List[str]) -> b
     return all(keyword.lower() in text for keyword in keywords)
 
 
-def _normalize_task_score(raw_score: float, *, epsilon: float = 1e-6) -> float:
+TASK_SCORE_EPSILON = 1e-3
+
+
+def _normalize_task_score(raw_score: float, *, epsilon: float = TASK_SCORE_EPSILON) -> float:
     """
     Normalize score into the strict open interval (0, 1).
+
+    A slightly larger epsilon keeps formatted outputs (for example, with 3 decimals)
+    from appearing as 0.000 or 1.000.
     """
     if not math.isfinite(raw_score):
         raw_score = 0.5
