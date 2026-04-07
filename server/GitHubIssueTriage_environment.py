@@ -25,6 +25,7 @@ try:
     from GitHubIssueTriage.server.loader import load_episode_bundle, load_episode_bundle_from_paths
     from GitHubIssueTriage.server.observation import build_observation
     from GitHubIssueTriage.server.reward import compute_reward
+    from GitHubIssueTriage.server.grader import _normalize_task_score
     from GitHubIssueTriage.server.termination import is_episode_done
     from GitHubIssueTriage.server.transitions import apply_action_to_state
 except ImportError:  # pragma: no cover
@@ -43,6 +44,7 @@ except ImportError:  # pragma: no cover
     from server.loader import load_episode_bundle, load_episode_bundle_from_paths
     from server.observation import build_observation
     from server.reward import compute_reward
+    from server.grader import _normalize_task_score
     from server.termination import is_episode_done
     from server.transitions import apply_action_to_state
 
@@ -244,7 +246,9 @@ class GitHubIssueTriageEnvironment(Environment):
         if state.done:
             obs = build_observation(state)
             reward = compute_reward(state)
-            obs.reward = reward.total
+            normalized_reward_total = _normalize_task_score(reward.total)
+            reward.total = normalized_reward_total
+            obs.reward = normalized_reward_total
             reward_dump = reward.model_dump()
             reward_components = (
                 reward_dump.pop("components", {})
@@ -305,9 +309,11 @@ class GitHubIssueTriageEnvironment(Environment):
             state.last_action_message = notes[0]
 
             reward = compute_reward(state)
+            normalized_reward_total = _normalize_task_score(reward.total)
+            reward.total = normalized_reward_total
             obs = build_observation(state)
-            obs.reward = reward.total
-            state.internal_score_cache = reward.total
+            obs.reward = normalized_reward_total
+            state.internal_score_cache = normalized_reward_total
 
             reward_dump = reward.model_dump()
             reward_components = (
@@ -344,13 +350,15 @@ class GitHubIssueTriageEnvironment(Environment):
             state.done = True
 
         reward = compute_reward(state)
+        normalized_reward_total = _normalize_task_score(reward.total)
+        reward.total = normalized_reward_total
         obs = build_observation(state)
-        obs.reward = reward.total
+        obs.reward = normalized_reward_total
 
         transition_notes = list(getattr(transition, "notes", []))
         transition_effect = str(getattr(transition, "action_effect", ""))
 
-        state.internal_score_cache = reward.total
+        state.internal_score_cache = normalized_reward_total
         state.last_action_valid = bool(getattr(transition, "action_valid", True))
         state.last_action_message = (
             transition_notes[0] if transition_notes else transition_effect

@@ -13,6 +13,7 @@ try:
         Reward,
         Severity,
     )
+    from GitHubIssueTriage.server.grader import _normalize_task_score
 except ImportError:  # pragma: no cover
     from models import (
         CloseReason,
@@ -23,6 +24,7 @@ except ImportError:  # pragma: no cover
         Reward,
         Severity,
     )
+    from server.grader import _normalize_task_score
 
 
 def _labels_set(state: IssueTriageState) -> Set[str]:
@@ -71,7 +73,7 @@ def _basic_progress_score(state: IssueTriageState) -> Reward:
     if issue.comments:
         score += 0.2
 
-    score = max(0.0, min(1.0, score))
+    score = _normalize_task_score(score)
     return Reward(
         total=score,
         type_score=0.0,
@@ -160,7 +162,7 @@ def compute_reward(state: IssueTriageState) -> Reward:
         destructive_action_penalty = -0.15
         total += destructive_action_penalty
 
-    total = max(-1.0, min(1.0, total))
+    total = _normalize_task_score(total)
 
     return Reward(
         total=total,

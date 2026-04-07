@@ -1,60 +1,119 @@
-from .client import GithubissuetriageEnv
-from .models import (
-    Action,
-    ActionType,
-    AddLabelAction,
-    AssignUserAction,
-    CloseIssueAction,
-    CloseReason,
-    CommentAction,
-    Difficulty,
-    DuplicateCandidate,
-    GoalType,
-    GraderResult,
-    HistoryEntry,
-    HiddenGradingTarget,
-    IssueComment,
-    IssueSnapshot,
-    IssueStatus,
-    IssueTriageState,
-    MarkDuplicateAction,
-    NoopAction,
-    Observation,
-    Priority,
-    ReadAssigneePoolAction,
-    ReadIssueAction,
-    ReadLabelDefinitionsAction,
-    ReadMilestonesAction,
-    ReadRepoRulesAction,
-    ReadTeamRoutingAction,
-    RemoveLabelAction,
-    RequestInfoAction,
-    ResetResult,
-    Reward,
-    ReopenIssueAction,
-    RepoRules,
-    SearchSimilarIssuesAction,
-    Severity,
-    SetMilestoneAction,
-    SetPriorityAction,
-    State,
-    StatePayload,
-    StepInfo,
-    StepResult,
-    TaskSpec,
-    TimelineEvent,
-    build_initial_state,
-    validate_action_payload,
-)
-from .server.actions import ParsedActionResult, parse_and_validate_action
-from .server.loader import load_episode_bundle, load_episode_bundle_from_paths, _validate_model
-from .server.observation import build_observation
-from .server.reward import compute_reward
-from .server.termination import is_episode_done
-from .server.transitions import apply_action_to_state
-from .server.GitHubIssueTriage_environment import GitHubIssueTriageEnvironment
-from .server.grader import grade_episode
-from .server.loader import load_episode_from_source
+try:
+    from .client import GithubissuetriageEnv
+    from .models import (
+        Action,
+        ActionType,
+        AddLabelAction,
+        AssignUserAction,
+        CloseIssueAction,
+        CloseReason,
+        CommentAction,
+        Difficulty,
+        DuplicateCandidate,
+        GoalType,
+        GraderResult,
+        HistoryEntry,
+        HiddenGradingTarget,
+        IssueComment,
+        IssueSnapshot,
+        IssueStatus,
+        IssueTriageState,
+        MarkDuplicateAction,
+        NoopAction,
+        Observation,
+        Priority,
+        ReadAssigneePoolAction,
+        ReadIssueAction,
+        ReadLabelDefinitionsAction,
+        ReadMilestonesAction,
+        ReadRepoRulesAction,
+        ReadTeamRoutingAction,
+        RemoveLabelAction,
+        RequestInfoAction,
+        ResetResult,
+        Reward,
+        ReopenIssueAction,
+        RepoRules,
+        SearchSimilarIssuesAction,
+        Severity,
+        SetMilestoneAction,
+        SetPriorityAction,
+        State,
+        StatePayload,
+        StepInfo,
+        StepResult,
+        TaskSpec,
+        TimelineEvent,
+        build_initial_state,
+        validate_action_payload,
+    )
+    from .server.actions import ParsedActionResult, parse_and_validate_action
+    from .server.loader import load_episode_bundle, load_episode_bundle_from_paths, _validate_model
+    from .server.observation import build_observation
+    from .server.reward import compute_reward
+    from .server.termination import is_episode_done
+    from .server.transitions import apply_action_to_state
+    from .server.GitHubIssueTriage_environment import GitHubIssueTriageEnvironment
+    from .server.grader import grade_episode
+    from .server.loader import load_episode_from_source
+except ImportError:  # pragma: no cover
+    from client import GithubissuetriageEnv
+    from models import (
+        Action,
+        ActionType,
+        AddLabelAction,
+        AssignUserAction,
+        CloseIssueAction,
+        CloseReason,
+        CommentAction,
+        Difficulty,
+        DuplicateCandidate,
+        GoalType,
+        GraderResult,
+        HistoryEntry,
+        HiddenGradingTarget,
+        IssueComment,
+        IssueSnapshot,
+        IssueStatus,
+        IssueTriageState,
+        MarkDuplicateAction,
+        NoopAction,
+        Observation,
+        Priority,
+        ReadAssigneePoolAction,
+        ReadIssueAction,
+        ReadLabelDefinitionsAction,
+        ReadMilestonesAction,
+        ReadRepoRulesAction,
+        ReadTeamRoutingAction,
+        RemoveLabelAction,
+        RequestInfoAction,
+        ResetResult,
+        Reward,
+        ReopenIssueAction,
+        RepoRules,
+        SearchSimilarIssuesAction,
+        Severity,
+        SetMilestoneAction,
+        SetPriorityAction,
+        State,
+        StatePayload,
+        StepInfo,
+        StepResult,
+        TaskSpec,
+        TimelineEvent,
+        build_initial_state,
+        validate_action_payload,
+    )
+    from server.actions import ParsedActionResult, parse_and_validate_action
+    from server.loader import load_episode_bundle, load_episode_bundle_from_paths, _validate_model
+    from server.observation import build_observation
+    from server.reward import compute_reward
+    from server.termination import is_episode_done
+    from server.transitions import apply_action_to_state
+    from server.GitHubIssueTriage_environment import GitHubIssueTriageEnvironment
+    from server.grader import grade_episode
+    from server.loader import load_episode_from_source
 
 __all__ = [
     "Action",
