@@ -2,190 +2,361 @@
 from __future__ import annotations
 
 import math
-from typing import Any, List, Set
+from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 try:
-    from GitHubIssueTriage.models import GraderResult, HiddenGradingTarget, IssueStatus, IssueTriageState
+    from GitHubIssueTriage.models import (
+        GraderResult,
+        HiddenGradingTarget,
+        IssueStatus,
+        IssueTriageState,
+    )
 except ImportError:  # pragma: no cover
     from models import GraderResult, HiddenGradingTarget, IssueStatus, IssueTriageState
 
 
-def _labels_set(state: IssueTriageState) -> Set[str]:
-    return set(state.issue.labels)
-
-
-def _comment_text(state: IssueTriageState) -> str:
-    return " ".join(comment.body.lower() for comment in state.issue.comments)
-
-
-def _requested_fields_set(state: IssueTriageState) -> Set[str]:
-    return set(state.requested_fields)
-
-
-def _close_reason(state: IssueTriageState) -> str:
-    return str(state.issue.metadata.get("close_reason", "")).lower()
-
-
-def _matched_comment_keywords(state: IssueTriageState, keywords: List[str]) -> bool:
-    if not keywords:
-        return True
-    text = _comment_text(state)
-    return all(keyword.lower() in text for keyword in keywords)
-
-
-TASK_SCORE_EPSILON = 1e-3
+# Keep a visible safety margin from both 0 and 1.
+# This protects against downstream rounding/formatting.
+TASK_SCORE_EPSILON = 1e-2
 
 
 def _normalize_task_score(raw_score: float, *, epsilon: float = TASK_SCORE_EPSILON) -> float:
     """
-    Normalize score into the strict open interval (0, 1).
-
-    A slightly larger epsilon keeps formatted outputs (for example, with 3 decimals)
-    from appearing as 0.000 or 1.000.
+    Clamp any score into the strict open interval (0, 1).
     """
-    if not math.isfinite(raw_score):
-        raw_score = 0.5
-    return min(1.0 - epsilon, max(epsilon, raw_score))
+    try:
+        score = float(raw_score)
+    except (TypeError, ValueError):
+        score = 0.5
+
+    if not math.isfinite(score):
+        score = 0.5
+
+    eps = float(epsilon)
+    if not math.isfinite(eps):
+        eps = TASK_SCORE_EPSILON
+    eps = max(1e-6, min(0.49, eps))
+
+    return min(1.0 - eps, max(eps, score))
 
 
-def _grade_labels(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, float, List[str], List[str]]:
-    if not target.gold_labels:
-        return True, 1.0, [], []
+def _resolve_state(state: Any) -> Any:
+    """
+    Accepts raw state, callable state providers, or wrappers with an observation field.
+    """
+    candidate = state
+    if callable(candidate):
+        try:
+            candidate = candidate()
+        except Exception:
+            candidate = None
 
-    labels = _labels_set(state)
-    matched = [label for label in target.gold_labels if label in labels]
-    partial = len(matched) / float(len(target.gold_labels))
-    ok = partial == 1.0
-    notes = [] if ok else ["Label set incomplete or incorrect."]
-    return ok, partial, matched, notes
+    if hasattr(candidate, "observation") and not hasattr(candidate, "issue"):
+        candidate = getattr(candidate, "observation", None)
 
-
-def _grade_assignee(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, List[str]]:
-    if target.gold_assignee is None:
-        ok = len(state.issue.assignees) == 0
-    else:
-        ok = state.issue.assignees == [target.gold_assignee]
-    notes = [] if ok else ["Assignee does not match target."]
-    return ok, notes
+    return candidate
 
 
-def _grade_priority(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, List[str]]:
-    if target.gold_priority is None:
-        ok = state.issue.priority is None
-    else:
-        ok = state.issue.priority == target.gold_priority
-    notes = [] if ok else ["Priority does not match target."]
-    return ok, notes
+def _issue_from_state(state: Any) -> Any:
+    return getattr(state, "issue", None)
 
 
-def _grade_milestone(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, List[str]]:
-    if target.gold_milestone is None:
-        ok = state.issue.milestone is None
-    else:
-        ok = state.issue.milestone == target.gold_milestone
-    notes = [] if ok else ["Milestone does not match target."]
-    return ok, notes
+def _hidden_target_from_state(state: Any) -> Optional[HiddenGradingTarget]:
+    target = getattr(state, "hidden_target", None)
+    if isinstance(target, HiddenGradingTarget):
+        return target
+    if isinstance(target, dict):
+        validator = getattr(HiddenGradingTarget, "model_validate", None)
+        if callable(validator):
+            try:
+                return validator(target)
+            except Exception:
+                return None
+    if target is not None and hasattr(target, "gold_labels"):
+        parser = getattr(HiddenGradingTarget, "model_validate", None)
+        if callable(parser):
+            try:
+                return parser(getattr(target, "__dict__", {}))
+            except Exception:
+                return None
+    return None
 
 
-def _grade_severity(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, List[str]]:
-    if target.gold_severity is None:
-        ok = state.issue.severity is None
-    else:
-        ok = state.issue.severity == target.gold_severity
-    notes = [] if ok else ["Severity does not match target."]
-    return ok, notes
+def _close_reason(state: Any) -> str:
+    issue = _issue_from_state(state)
+    if issue is None:
+        return ""
+    metadata = getattr(issue, "metadata", {}) or {}
+    if not isinstance(metadata, dict):
+        return ""
+    return str(metadata.get("close_reason", "")).strip().lower()
 
 
-def _grade_component(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, List[str]]:
-    if target.gold_component is None:
-        ok = state.issue.component is None
-    else:
-        ok = state.issue.component == target.gold_component
-    notes = [] if ok else ["Component does not match target."]
-    return ok, notes
+def _labels(state: Any) -> List[str]:
+    issue = _issue_from_state(state)
+    values = getattr(issue, "labels", []) if issue is not None else []
+    return [str(v) for v in values if isinstance(v, str) and v.strip()]
 
 
-def _grade_duplicate(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, List[str]]:
+def _assignees(state: Any) -> List[str]:
+    issue = _issue_from_state(state)
+    values = getattr(issue, "assignees", []) if issue is not None else []
+    return [str(v) for v in values if isinstance(v, str) and v.strip()]
+
+
+def _linked_duplicates(state: Any) -> List[str]:
+    issue = _issue_from_state(state)
+    values = getattr(issue, "linked_duplicates", []) if issue is not None else []
+    return [str(v) for v in values if isinstance(v, str) and v.strip()]
+
+
+def _requested_fields(state: Any) -> List[str]:
+    values = getattr(state, "requested_fields", []) or []
+    return [str(v) for v in values if isinstance(v, str) and v.strip()]
+
+
+def _comment_text(state: Any) -> str:
+    issue = _issue_from_state(state)
+    comments = getattr(issue, "comments", []) if issue is not None else []
+    snippets: List[str] = []
+    for comment in comments:
+        body = getattr(comment, "body", "")
+        if isinstance(body, str) and body.strip():
+            snippets.append(body.lower())
+    return " ".join(snippets)
+
+
+def _scalar_match(actual: Any, expected: Any) -> bool:
+    if expected is None:
+        return actual is None
+    return actual == expected
+
+
+def _exact_or_empty(actual_items: Sequence[str], expected_item: Optional[str]) -> bool:
+    if expected_item is None:
+        return len(actual_items) == 0
+    return list(actual_items) == [expected_item]
+
+
+def _coverage(required: Iterable[str], present: Iterable[str]) -> Tuple[float, List[str]]:
+    req = [str(x) for x in required if isinstance(x, str) and x.strip()]
+    if not req:
+        return 1.0, []
+
+    present_set = {str(x) for x in present if isinstance(x, str) and str(x).strip()}
+    matched = [item for item in req if item in present_set]
+    return len(matched) / float(len(req)), matched
+
+
+def _efficiency_score(state: Any) -> float:
+    max_steps = getattr(state, "max_steps", None)
+    if max_steps is None and hasattr(state, "task"):
+        max_steps = getattr(state.task, "max_steps", None)
+    step_count = getattr(state, "step_count", 0)
+
+    try:
+        max_steps_value = int(max_steps) if max_steps is not None else 0
+    except Exception:
+        max_steps_value = 0
+
+    try:
+        step_count_value = int(step_count)
+    except Exception:
+        step_count_value = 0
+
+    if max_steps_value <= 0:
+        return 0.0
+    ratio = max(0.0, min(1.0, float(step_count_value) / float(max_steps_value)))
+    return 1.0 - ratio
+
+
+def _matches_comment_keywords(state: Any, keywords: Sequence[str]) -> bool:
+    wanted = [k.lower() for k in keywords if isinstance(k, str) and k.strip()]
+    if not wanted:
+        return True
+    text = _comment_text(state)
+    return all(word in text for word in wanted)
+
+
+def _build_result(
+    *,
+    score: float,
+    matched_labels: List[str],
+    matched_assignee: bool,
+    matched_priority: bool,
+    matched_milestone: bool,
+    duplicate_matched: bool,
+    missing_fields_requested: bool,
+    closed_correctly: bool,
+    comment_accepted: bool,
+    notes: List[str],
+) -> GraderResult:
+    deduped_notes: List[str] = []
+    for note in notes:
+        if note and note not in deduped_notes:
+            deduped_notes.append(note)
+
+    return GraderResult(
+        score=_normalize_task_score(score),
+        matched_labels=matched_labels,
+        matched_assignee=matched_assignee,
+        matched_priority=matched_priority,
+        matched_milestone=matched_milestone,
+        duplicate_matched=duplicate_matched,
+        missing_fields_requested=missing_fields_requested,
+        closed_correctly=closed_correctly,
+        comment_accepted=comment_accepted,
+        notes=deduped_notes,
+    )
+
+
+def _grade_with_hidden_target(state: Any, target: HiddenGradingTarget) -> GraderResult:
+    issue = _issue_from_state(state)
+
+    labels_cov, matched_labels = _coverage(target.gold_labels, _labels(state))
+    assignee_ok = _exact_or_empty(_assignees(state), target.gold_assignee)
+    priority_ok = _scalar_match(getattr(issue, "priority", None), target.gold_priority)
+    milestone_ok = _scalar_match(getattr(issue, "milestone", None), target.gold_milestone)
+    severity_ok = _scalar_match(getattr(issue, "severity", None), target.gold_severity)
+    component_ok = _scalar_match(getattr(issue, "component", None), target.gold_component)
+
+    duplicates = _linked_duplicates(state)
     if target.gold_duplicate_issue_id is None:
-        ok = len(state.issue.linked_duplicates) == 0
+        duplicate_ok = len(duplicates) == 0
     else:
-        ok = target.gold_duplicate_issue_id in state.issue.linked_duplicates
-    notes = [] if ok else ["Duplicate target not linked correctly."]
-    return ok, notes
+        duplicate_ok = target.gold_duplicate_issue_id in duplicates
 
+    missing_cov, _ = _coverage(target.required_missing_fields, _requested_fields(state))
+    missing_ok = missing_cov >= 0.999
 
-def _grade_missing_info(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, float, List[str]]:
-    if not target.required_missing_fields:
-        return True, 1.0, []
-
-    requested = _requested_fields_set(state)
-    required = set(target.required_missing_fields)
-    matched = requested.intersection(required)
-    partial = len(matched) / float(len(required)) if required else 1.0
-    ok = partial == 1.0
-    notes = [] if ok else ["Required missing fields were not fully requested."]
-    return ok, partial, notes
-
-
-def _grade_closure(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, float, List[str]]:
+    issue_status = getattr(issue, "status", None)
     if target.gold_close_reason is None:
-        ok = state.issue.status == IssueStatus.OPEN
-        notes = [] if ok else ["Closure state does not match target."]
-        return ok, 0.0, notes
-
-    ok = state.issue.status == IssueStatus.CLOSED
-    notes: List[str] = []
-    bonus = 0.0
-    if ok:
-        if _close_reason(state) == target.gold_close_reason.value:
-            bonus = 0.02
-        else:
-            notes.append("Close reason does not match target.")
+        closure_ok = issue_status == IssueStatus.OPEN
     else:
+        expected_reason = target.gold_close_reason.value.lower()
+        closure_ok = issue_status == IssueStatus.CLOSED and _close_reason(state) == expected_reason
+
+    comment_ok = _matches_comment_keywords(state, target.expected_comment_keywords)
+    efficiency = _efficiency_score(state)
+
+    score = 0.0
+    score += 0.30 * labels_cov
+    score += 0.14 * (1.0 if assignee_ok else 0.0)
+    score += 0.08 * (1.0 if priority_ok else 0.0)
+    score += 0.07 * (1.0 if milestone_ok else 0.0)
+    score += 0.08 * (1.0 if severity_ok else 0.0)
+    score += 0.08 * (1.0 if component_ok else 0.0)
+    score += 0.07 * (1.0 if duplicate_ok else 0.0)
+    score += 0.06 * missing_cov
+    score += 0.05 * (1.0 if closure_ok else 0.0)
+    score += 0.03 * (1.0 if comment_ok else 0.0)
+    score += 0.03 * efficiency
+
+    notes: List[str] = []
+    if labels_cov < 0.999:
+        notes.append("Label set is incomplete or incorrect.")
+    if not assignee_ok:
+        notes.append("Assignee does not match target.")
+    if not priority_ok:
+        notes.append("Priority does not match target.")
+    if not milestone_ok:
+        notes.append("Milestone does not match target.")
+    if not severity_ok:
+        notes.append("Severity does not match target.")
+    if not component_ok:
+        notes.append("Component does not match target.")
+    if not duplicate_ok:
+        notes.append("Duplicate handling does not match target.")
+    if not missing_ok:
+        notes.append("Required info fields were not fully requested.")
+    if not closure_ok:
         notes.append("Closure state does not match target.")
-    return ok, bonus, notes
+    if not comment_ok:
+        notes.append("Comment keywords did not match target.")
+
+    return _build_result(
+        score=score,
+        matched_labels=matched_labels,
+        matched_assignee=assignee_ok,
+        matched_priority=priority_ok,
+        matched_milestone=milestone_ok,
+        duplicate_matched=duplicate_ok,
+        missing_fields_requested=missing_ok,
+        closed_correctly=closure_ok,
+        comment_accepted=comment_ok,
+        notes=notes,
+    )
 
 
-def _grade_comment(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, List[str]]:
-    ok = _matched_comment_keywords(state, target.expected_comment_keywords)
-    notes = [] if ok else ["Comment keywords did not match target."]
-    return ok, notes
+def _grade_without_hidden_target(state: Any) -> GraderResult:
+    issue = _issue_from_state(state)
+    labels = _labels(state)
+    assignees = _assignees(state)
+    duplicates = _linked_duplicates(state)
+    requested_fields = _requested_fields(state)
+    efficiency = _efficiency_score(state)
+
+    priority_ok = getattr(issue, "priority", None) is not None
+    milestone_ok = getattr(issue, "milestone", None) is not None
+    severity_ok = getattr(issue, "severity", None) is not None
+    component_ok = getattr(issue, "component", None) is not None
+    comment_ok = bool(getattr(issue, "comments", []))
+    duplicate_ok = len(duplicates) > 0
+    closed_ok = getattr(issue, "status", None) == IssueStatus.CLOSED
+
+    labels_score = min(1.0, len(labels) / 4.0)
+    score = 0.0
+    score += 0.28 * labels_score
+    score += 0.14 * (1.0 if assignees else 0.0)
+    score += 0.10 * (1.0 if priority_ok else 0.0)
+    score += 0.10 * (1.0 if milestone_ok else 0.0)
+    score += 0.10 * (1.0 if severity_ok else 0.0)
+    score += 0.10 * (1.0 if component_ok else 0.0)
+    score += 0.06 * (1.0 if duplicate_ok else 0.0)
+    score += 0.05 * (1.0 if comment_ok else 0.0)
+    score += 0.05 * efficiency
+
+    notes: List[str] = []
+    if not labels:
+        notes.append("No labels added.")
+    if not assignees:
+        notes.append("No assignee set.")
+    if not priority_ok:
+        notes.append("Priority is not set.")
+    if not milestone_ok:
+        notes.append("Milestone is not set.")
+    if not severity_ok:
+        notes.append("Severity is not set.")
+    if not component_ok:
+        notes.append("Component is not set.")
+    if not notes:
+        notes.append("No hidden_target present; graded on observable state.")
+
+    return _build_result(
+        score=score,
+        matched_labels=labels,
+        matched_assignee=bool(assignees),
+        matched_priority=priority_ok,
+        matched_milestone=milestone_ok,
+        duplicate_matched=duplicate_ok,
+        missing_fields_requested=bool(requested_fields),
+        closed_correctly=closed_ok,
+        comment_accepted=comment_ok,
+        notes=notes,
+    )
 
 
 def grade_episode(state: IssueTriageState | Any) -> GraderResult:
     """
-    Advanced deterministic grader supporting both IssueTriageState and Observation objects.
+    Deterministic task grader.
 
-    Score range: strictly between 0.0 and 1.0
-    
-    Scoring breakdown:
-      - Labels: 35% (gold label coverage)
-      - Assignee: 20% (presence)
-      - Priority/Severity/Component: 20% (presence combined)
-      - Milestone: 10% (presence)
-      - Duplicate handling: 10% (if applicable)
-      - Step efficiency bonus: up to 5%
+    Guarantees score is strictly within (0, 1) on every return path.
     """
-    # Handle callable state providers
-    if callable(state):
-        try:
-            state = state()
-        except:
-            state = None
-
-    # Try to extract observation from state if it's nested
-    if hasattr(state, "observation") and not hasattr(state, "issue"):
-        state = state.observation
-
-    # Handle Observation objects (from remote sessions)
-    if hasattr(state, "issue") and hasattr(state, "task") and not hasattr(state, "hidden_target"):
-        # This is an Observation, build a minimal scoring result from it
-        return _grade_observation(state)
-
-    # Validate state has required attributes
-    if not hasattr(state, "hidden_target") or not hasattr(state, "issue"):
-        return GraderResult(
-            score=_normalize_task_score(0.0),
+    resolved = _resolve_state(state)
+    issue = _issue_from_state(resolved)
+    if resolved is None or issue is None:
+        return _build_result(
+            score=0.0,
             matched_labels=[],
             matched_assignee=False,
             matched_priority=False,
@@ -197,169 +368,10 @@ def grade_episode(state: IssueTriageState | Any) -> GraderResult:
             notes=["Invalid state object passed to grader."],
         )
 
-    target = state.hidden_target
+    target = _hidden_target_from_state(resolved)
     if target is None:
-        # Fallback grading when no hidden target exists
-        return _grade_observation_without_target(state)
-
-    # Full scoring with hidden target
-    labels_ok, labels_partial, matched_labels, label_notes = _grade_labels(state, target)
-    assignee_ok, assignee_notes = _grade_assignee(state, target)
-    priority_ok, priority_notes = _grade_priority(state, target)
-    milestone_ok, milestone_notes = _grade_milestone(state, target)
-    severity_ok, severity_notes = _grade_severity(state, target)
-    component_ok, component_notes = _grade_component(state, target)
-    duplicate_ok, duplicate_notes = _grade_duplicate(state, target)
-    missing_info_ok, missing_info_partial, missing_notes = _grade_missing_info(state, target)
-    closure_ok, closure_bonus, closure_notes = _grade_closure(state, target)
-    comment_ok, comment_notes = _grade_comment(state, target)
-
-    # Advanced scoring with weighted components
-    score = 0.0
-    score += 0.35 * (1.0 if labels_ok else labels_partial)  # 35% for labels
-    score += 0.20 if assignee_ok else 0.0  # 20% for assignee
-    score += 0.20 * (
-        (1.0 if priority_ok else 0.0)
-        + (1.0 if severity_ok else 0.0)
-        + (1.0 if component_ok else 0.0)
-    ) / 3.0  # 20% for priority/severity/component
-    score += 0.10 if milestone_ok else 0.0  # 10% for milestone
-    score += 0.10 if duplicate_ok else 0.0  # 10% for duplicate handling
-    
-    # Step efficiency bonus (up to 5%)
-    max_steps = getattr(state, "max_steps", 10)
-    step_count = getattr(state, "step_count", 0)
-    if max_steps > 0 and step_count > 0:
-        efficiency = max(0.0, 1.0 - (step_count / max_steps))
-        score += 0.05 * efficiency
-
-    score = max(0.0, min(1.0, score))
-    score += closure_bonus  # Add closure bonus on top
-    score = _normalize_task_score(score)
-
-    notes: List[str] = []
-    for bucket in (
-        label_notes,
-        assignee_notes,
-        priority_notes,
-        milestone_notes,
-        severity_notes,
-        component_notes,
-        duplicate_notes,
-        missing_notes,
-        closure_notes,
-        comment_notes,
-    ):
-        for message in bucket:
-            if message and message not in notes:
-                notes.append(message)
-
-    return GraderResult(
-        score=score,
-        matched_labels=matched_labels,
-        matched_assignee=assignee_ok,
-        matched_priority=priority_ok,
-        matched_milestone=milestone_ok,
-        duplicate_matched=duplicate_ok,
-        missing_fields_requested=missing_info_ok,
-        closed_correctly=closure_ok,
-        comment_accepted=comment_ok,
-        notes=notes,
-    )
-
-
-def _grade_observation_without_target(state: Any) -> GraderResult:
-    """Grade an IssueTriageState without hidden target using observable state."""
-    issue = getattr(state, "issue", None)
-    if not issue:
-        return GraderResult(
-            score=_normalize_task_score(0.0),
-            matched_labels=[],
-            matched_assignee=False,
-            matched_priority=False,
-            matched_milestone=False,
-            duplicate_matched=False,
-            missing_fields_requested=False,
-            closed_correctly=False,
-            comment_accepted=False,
-            notes=["No issue data available for grading."],
-        )
-
-    # Score based on observable triage actions taken
-    score = 0.0
-    notes: List[str] = []
-
-    label_count = len(getattr(issue, "labels", []))
-    if label_count > 0:
-        score += 0.35 * min(1.0, label_count / 3.0)
-    else:
-        notes.append("No labels added.")
-
-    assignees = getattr(issue, "assignees", [])
-    if assignees:
-        score += 0.20
-    else:
-        notes.append("No assignee set.")
-
-    if getattr(issue, "priority", None):
-        score += 0.067
-    if getattr(issue, "milestone", None):
-        score += 0.067
-    if getattr(issue, "severity", None):
-        score += 0.067
-    if getattr(issue, "component", None):
-        score += 0.067
-    else:
-        notes.append("Missing priority/severity/component/milestone.")
-
-    if getattr(issue, "linked_duplicates", []):
-        score += 0.10
-    if getattr(issue, "comments", []):
-        score += 0.05
-
-    # Efficiency bonus
-    max_steps = getattr(state, "max_steps", 10)
-    step_count = getattr(state, "step_count", 0)
-    if max_steps > 0 and step_count > 0:
-        efficiency = max(0.0, 1.0 - (step_count / max_steps))
-        score += 0.05 * efficiency
-
-    score = _normalize_task_score(score)
-    if not notes:
-        notes.append("No hidden_target present; graded on observable state.")
-
-    return GraderResult(
-        score=score,
-        matched_labels=list(getattr(issue, "labels", [])),
-        matched_assignee=bool(assignees),
-        matched_priority=getattr(issue, "priority", None) is not None,
-        matched_milestone=getattr(issue, "milestone", None) is not None,
-        duplicate_matched=bool(getattr(issue, "linked_duplicates", [])),
-        missing_fields_requested=False,
-        closed_correctly=getattr(issue, "status", None) == IssueStatus.CLOSED,
-        comment_accepted=bool(getattr(issue, "comments", [])),
-        notes=notes,
-    )
-
-
-def _grade_observation(obs: Any) -> GraderResult:
-    """Grade an Observation object (from remote sessions) without hidden target."""
-    issue = getattr(obs, "issue", None)
-    if not issue:
-        return GraderResult(
-            score=_normalize_task_score(0.0),
-            matched_labels=[],
-            matched_assignee=False,
-            matched_priority=False,
-            matched_milestone=False,
-            duplicate_matched=False,
-            missing_fields_requested=False,
-            closed_correctly=False,
-            comment_accepted=False,
-            notes=["Invalid observation: no issue data."],
-        )
-
-    return _grade_observation_without_target(obs)
+        return _grade_without_hidden_target(resolved)
+    return _grade_with_hidden_target(resolved, target)
 
 
 def is_success(state: IssueTriageState) -> bool:

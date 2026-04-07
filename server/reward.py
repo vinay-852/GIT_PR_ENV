@@ -59,6 +59,21 @@ def _closed_reason_bonus(target: HiddenGradingTarget, state: IssueTriageState) -
     return 1.0
 
 
+def _open_score(value: float) -> float:
+    """
+    Normalize any score-like value into the strict open interval (0, 1).
+    """
+    bounded = max(0.0, min(1.0, float(value)))
+    return _normalize_task_score(bounded)
+
+
+def _step_efficiency_score(state: IssueTriageState) -> float:
+    max_steps = max(1, int(state.max_steps or 1))
+    used_steps = max(0, int(state.step_count or 0))
+    raw = 1.0 - min(1.0, used_steps / float(max_steps))
+    return _open_score(raw)
+
+
 def _basic_progress_score(state: IssueTriageState) -> Reward:
     issue = state.issue
     score = 0.0
@@ -74,18 +89,30 @@ def _basic_progress_score(state: IssueTriageState) -> Reward:
         score += 0.2
 
     score = _normalize_task_score(score)
+    type_score = _open_score(1.0 if any(label.startswith("type:") for label in issue.labels) else 0.0)
+    severity_score = _open_score(1.0 if issue.severity is not None else 0.0)
+    component_score = _open_score(1.0 if issue.component is not None else 0.0)
+    assignee_score = _open_score(1.0 if issue.assignees else 0.0)
+    priority_score = _open_score(1.0 if issue.priority is not None else 0.0)
+    milestone_score = _open_score(1.0 if issue.milestone is not None else 0.0)
+    missing_info_score = _open_score(1.0)
+    duplicate_score = _open_score(1.0 if issue.linked_duplicates else 0.0)
+    closure_score = _open_score(1.0 if issue.status == IssueStatus.OPEN else 0.0)
+    comment_score = _open_score(1.0 if issue.comments else 0.0)
+
     return Reward(
         total=score,
-        type_score=0.0,
-        severity_score=0.0,
-        component_score=0.0,
-        assignee_score=0.0,
-        priority_score=0.0,
-        milestone_score=0.0,
-        missing_info_score=0.0,
-        duplicate_score=0.0,
-        closure_score=0.0,
-        comment_score=0.0,
+        type_score=type_score,
+        severity_score=severity_score,
+        component_score=component_score,
+        assignee_score=assignee_score,
+        priority_score=priority_score,
+        milestone_score=milestone_score,
+        missing_info_score=missing_info_score,
+        duplicate_score=duplicate_score,
+        closure_score=closure_score,
+        comment_score=comment_score,
+        step_efficiency_score=_step_efficiency_score(state),
         invalid_action_penalty=0.0,
         destructive_action_penalty=0.0,
     )
@@ -166,16 +193,17 @@ def compute_reward(state: IssueTriageState) -> Reward:
 
     return Reward(
         total=total,
-        type_score=type_score,
-        severity_score=severity_score,
-        component_score=component_score,
-        assignee_score=assignee_score,
-        priority_score=priority_score,
-        milestone_score=milestone_score,
-        missing_info_score=missing_info_score,
-        duplicate_score=duplicate_score,
-        closure_score=closure_score,
-        comment_score=comment_score,
+        type_score=_open_score(type_score),
+        severity_score=_open_score(severity_score),
+        component_score=_open_score(component_score),
+        assignee_score=_open_score(assignee_score),
+        priority_score=_open_score(priority_score),
+        milestone_score=_open_score(milestone_score),
+        missing_info_score=_open_score(missing_info_score),
+        duplicate_score=_open_score(duplicate_score),
+        closure_score=_open_score(closure_score),
+        comment_score=_open_score(comment_score),
+        step_efficiency_score=_step_efficiency_score(state),
         invalid_action_penalty=invalid_action_penalty,
         destructive_action_penalty=destructive_action_penalty,
     )

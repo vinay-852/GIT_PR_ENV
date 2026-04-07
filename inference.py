@@ -330,33 +330,37 @@ def main() -> None:
     if not repo_rules_path.exists():
         raise FileNotFoundError(f"Repo rules file not found: {repo_rules_path}")
 
+    issue_path = Path(args.issue_file).resolve()
     tasks_path = Path(args.tasks_file).resolve()
     if tasks_path.exists():
         # Load all episodes from tasks
         episodes = load_episode_bundle(
             repo_rules_path=str(repo_rules_path),
             tasks_path=str(tasks_path),
-            issues_path=str(DEFAULT_ISSUES),
+            issues_path=str(issue_path),
             live_github=args.live_github,
         )
     else:
-        # Fallback to single episode
+        # If no tasks file is provided, auto-generate tasks from issues.
         if args.issue_url:
             issue_source: str = args.issue_url
+            episode = load_episode_from_source(
+                repo_rules_path=str(repo_rules_path),
+                issue_source=issue_source,
+                live_github=args.live_github,
+                task_id=args.task_id,
+                max_steps=args.max_steps,
+            )
+            episodes = [episode]
         else:
-            issue_path = Path(args.issue_file).resolve()
             if not issue_path.exists():
                 raise FileNotFoundError(f"Issue file not found: {issue_path}")
-            issue_source = str(issue_path)
-
-        episode = load_episode_from_source(
-            repo_rules_path=str(repo_rules_path),
-            issue_source=issue_source,
-            live_github=args.live_github,
-            task_id=args.task_id,
-            max_steps=args.max_steps,
-        )
-        episodes = [episode]
+            episodes = load_episode_bundle(
+                repo_rules_path=str(repo_rules_path),
+                tasks_path=None,
+                issues_path=str(issue_path),
+                live_github=args.live_github,
+            )
 
     model_client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN) if HF_TOKEN else None
     agent = IssueTriageAgent(
@@ -404,6 +408,7 @@ def main() -> None:
     if GithubissuetriageEnv is None:
         raise ImportError("Remote client is not available in this environment.")
 
+    episode = episodes[0]
     with GithubissuetriageEnv(
         base_url=args.base_url,
         episodes=[episode],

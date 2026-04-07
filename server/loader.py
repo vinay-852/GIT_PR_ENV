@@ -56,6 +56,35 @@ def _validate_model(model_cls, data: Any):
         return parser(data)
     raise AttributeError(f"{model_cls.__name__} does not support model validation.")
 
+
+def _default_allowed_actions() -> List[ActionType]:
+    return [
+        ActionType.READ_ISSUE,
+        ActionType.READ_REPO_RULES,
+        ActionType.READ_LABEL_DEFINITIONS,
+        ActionType.READ_TEAM_ROUTING,
+        ActionType.READ_ASSIGNEE_POOL,
+        ActionType.READ_MILESTONES,
+        ActionType.SEARCH_SIMILAR_ISSUES,
+        ActionType.ADD_LABEL,
+        ActionType.REMOVE_LABEL,
+        ActionType.ASSIGN_USER,
+        ActionType.SET_PRIORITY,
+        ActionType.SET_MILESTONE,
+        ActionType.COMMENT,
+        ActionType.REQUEST_INFO,
+        ActionType.PROVIDE_INFO,
+        ActionType.MARK_DUPLICATE,
+        ActionType.CLOSE_ISSUE,
+        ActionType.REOPEN_ISSUE,
+        ActionType.NOOP,
+    ]
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_]+", "_", str(text)).strip("_").lower()
+    return slug or "item"
+
 _GITHUB_ISSUE_WEB_RE = re.compile(
     r"^https?://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/issues/(?P<number>\d+)(?:/.*)?$"
 )
@@ -468,6 +497,73 @@ def _parse_candidate_duplicates(raw_task: dict) -> List[DuplicateCandidate]:
     return candidates
 
 
+def _infer_goal_type(issue: IssueSnapshot) -> GoalType:
+    if issue.linked_duplicates:
+        return GoalType.DUPLICATE_RESOLUTION
+
+    body = (issue.body or "").strip().lower()
+    uncertain_markers = ("not sure", "don't know", "unknown", "intermittent", "cannot reproduce")
+    if any(marker in body for marker in uncertain_markers):
+        return GoalType.NEEDS_INFO
+
+    return GoalType.TRIAGE_ONLY
+
+
+def _infer_difficulty(issue: IssueSnapshot, goal_type: GoalType) -> Difficulty:
+    if goal_type == GoalType.DUPLICATE_RESOLUTION:
+        return Difficulty.HARD
+    if goal_type == GoalType.NEEDS_INFO:
+        return Difficulty.MEDIUM
+    if issue.severity == Severity.CRITICAL or issue.priority == Priority.P0:
+        return Difficulty.MEDIUM
+    return Difficulty.EASY
+
+
+def _success_criteria_for_goal(goal_type: GoalType) -> List[str]:
+    if goal_type == GoalType.DUPLICATE_RESOLUTION:
+        return ["duplicate", "close", "labels"]
+    if goal_type == GoalType.NEEDS_INFO:
+        return ["request_info", "labels", "status"]
+    return ["labels", "assignee", "priority", "milestone"]
+
+
+def _auto_task_from_issue(issue: IssueSnapshot, existing_ids: set[str]) -> Dict[str, Any]:
+    goal_type = _infer_goal_type(issue)
+    difficulty = _infer_difficulty(issue, goal_type)
+
+    repo_slug = _slugify(issue.repo_id or "repo")
+    issue_slug = _slugify(issue.issue_id or "issue")
+    base_task_id = f"auto_{repo_slug}_{issue_slug}"
+
+    task_id = base_task_id
+    suffix = 2
+    while task_id in existing_ids:
+        task_id = f"{base_task_id}_{suffix}"
+        suffix += 1
+    existing_ids.add(task_id)
+
+    return {
+        "episode_id": f"ep_{task_id}",
+        "task_id": task_id,
+        "difficulty": difficulty.value,
+        "goal_type": goal_type.value,
+        "repo_id": issue.repo_id,
+        "issue_id": issue.issue_id,
+        "max_steps": 10,
+        "success_criteria": _success_criteria_for_goal(goal_type),
+        "allowed_actions": [action.value for action in _default_allowed_actions()],
+        "hidden_grading_flags": {},
+    }
+
+
+def _generate_tasks_from_issues(issues: Sequence[IssueSnapshot]) -> List[Dict[str, Any]]:
+    generated: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for issue in issues:
+        generated.append(_auto_task_from_issue(issue, seen_ids))
+    return generated
+
+
 def _generate_hidden_target_from_issue(issue: IssueSnapshot) -> HiddenGradingTarget:
     """
     Auto-generate a HiddenGradingTarget from issue metadata and comments.
@@ -532,7 +628,7 @@ def _generate_hidden_target_from_issue(issue: IssueSnapshot) -> HiddenGradingTar
 def load_episode_bundle(
     *,
     repo_rules_path: Union[str, Path],
-    tasks_path: Union[str, Path],
+    tasks_path: Optional[Union[str, Path]] = None,
     issues_path: Union[str, Path],
     live_github: bool = False,
 ) -> List[IssueTriageState]:
@@ -546,11 +642,21 @@ def load_episode_bundle(
       - single GitHub issue URLs inside issues.json or issue entries
     """
     repo_rules = load_repo_rules(repo_rules_path)
-    tasks_raw = _load_json_maybe_github(tasks_path)
     issues = load_issues(issues_path, live_github=live_github)
     issue_index = _build_issue_index(issues)
+    task_items: List[Any]
 
-    task_items = _unwrap_payload(tasks_raw, "tasks")
+    if tasks_path is None:
+        task_items = _generate_tasks_from_issues(issues)
+    else:
+        try:
+            tasks_raw = _load_json_maybe_github(tasks_path)
+            task_items = _unwrap_payload(tasks_raw, "tasks")
+        except FileNotFoundError:
+            task_items = _generate_tasks_from_issues(issues)
+
+    if not task_items:
+        task_items = _generate_tasks_from_issues(issues)
 
     episodes: List[IssueTriageState] = []
     task_field_names = set(TaskSpec.model_fields.keys())
@@ -605,13 +711,13 @@ def load_episode_bundle_from_paths(
     tasks_path = base / "tasks.json"
     issues_path = base / "issues.json"
 
-    missing = [str(p) for p in [repo_rules_path, tasks_path, issues_path] if not p.exists()]
+    missing = [str(p) for p in [repo_rules_path, issues_path] if not p.exists()]
     if missing:
         raise FileNotFoundError(f"Missing required files: {', '.join(missing)}")
 
     return load_episode_bundle(
         repo_rules_path=repo_rules_path,
-        tasks_path=tasks_path,
+        tasks_path=tasks_path if tasks_path.exists() else None,
         issues_path=issues_path,
         live_github=live_github,
     )
@@ -679,27 +785,7 @@ def load_episode_from_source(
         issue_id=issue.issue_id,
         max_steps=max_steps,
         success_criteria=[],
-        allowed_actions=[
-            ActionType.READ_ISSUE,
-            ActionType.READ_REPO_RULES,
-            ActionType.READ_LABEL_DEFINITIONS,
-            ActionType.READ_TEAM_ROUTING,
-            ActionType.READ_ASSIGNEE_POOL,
-            ActionType.READ_MILESTONES,
-            ActionType.SEARCH_SIMILAR_ISSUES,
-            ActionType.ADD_LABEL,
-            ActionType.REMOVE_LABEL,
-            ActionType.ASSIGN_USER,
-            ActionType.SET_PRIORITY,
-            ActionType.SET_MILESTONE,
-            ActionType.COMMENT,
-            ActionType.REQUEST_INFO,
-            ActionType.PROVIDE_INFO,
-            ActionType.MARK_DUPLICATE,
-            ActionType.CLOSE_ISSUE,
-            ActionType.REOPEN_ISSUE,
-            ActionType.NOOP,
-        ],
+        allowed_actions=_default_allowed_actions(),
         hidden_grading_flags={},
         repo_rules_url=None,
     )

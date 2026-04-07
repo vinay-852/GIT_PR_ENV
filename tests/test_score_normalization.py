@@ -100,16 +100,25 @@ def test_grade_episode_score_is_strict_open_interval():
 def test_compute_reward_clamps_zero_progress_to_open_interval():
     reward = compute_reward(_make_zero_progress_state())
     assert 0.0 < reward.total < 1.0
+    for key, value in reward.model_dump().items():
+        if key.endswith("_score"):
+            assert 0.0 < value < 1.0
 
 
 def test_compute_reward_clamps_perfect_state_to_open_interval():
     reward = compute_reward(_make_perfect_target_state())
     assert 0.0 < reward.total < 1.0
+    for key, value in reward.model_dump().items():
+        if key.endswith("_score"):
+            assert 0.0 < value < 1.0
 
 
 def test_compute_reward_clamps_basic_full_progress_to_open_interval():
     reward = compute_reward(_make_basic_full_progress_state())
     assert 0.0 < reward.total < 1.0
+    for key, value in reward.model_dump().items():
+        if key.endswith("_score"):
+            assert 0.0 < value < 1.0
 
 
 def test_environment_step_outputs_strict_open_interval_scores():

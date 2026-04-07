@@ -86,7 +86,7 @@ class GitHubIssueTriageEnvironment(Environment):
                     data_dir,
                     live_github=live_github,
                 )
-            elif repo_rules_source and tasks_source and issues_source:
+            elif repo_rules_source and issues_source:
                 self._episodes_source = load_episode_bundle(
                     repo_rules_path=repo_rules_source,
                     tasks_path=tasks_source,
