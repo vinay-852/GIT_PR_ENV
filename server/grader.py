@@ -1,6 +1,7 @@
 # envs/your_env/server/grader.py
 from __future__ import annotations
 
+import math
 from typing import Any, List, Set
 
 try:
@@ -30,6 +31,15 @@ def _matched_comment_keywords(state: IssueTriageState, keywords: List[str]) -> b
         return True
     text = _comment_text(state)
     return all(keyword.lower() in text for keyword in keywords)
+
+
+def _normalize_task_score(raw_score: float, *, epsilon: float = 1e-6) -> float:
+    """
+    Normalize score into the strict open interval (0, 1).
+    """
+    if not math.isfinite(raw_score):
+        raw_score = 0.5
+    return min(1.0 - epsilon, max(epsilon, raw_score))
 
 
 def _grade_labels(state: IssueTriageState, target: HiddenGradingTarget) -> tuple[bool, float, List[str], List[str]]:
@@ -140,7 +150,7 @@ def grade_episode(state: IssueTriageState | Any) -> GraderResult:
     """
     Advanced deterministic grader supporting both IssueTriageState and Observation objects.
 
-    Score range: 0.0 to 1.0
+    Score range: strictly between 0.0 and 1.0
     
     Scoring breakdown:
       - Labels: 35% (gold label coverage)
@@ -169,7 +179,7 @@ def grade_episode(state: IssueTriageState | Any) -> GraderResult:
     # Validate state has required attributes
     if not hasattr(state, "hidden_target") or not hasattr(state, "issue"):
         return GraderResult(
-            score=0.0,
+            score=_normalize_task_score(0.0),
             matched_labels=[],
             matched_assignee=False,
             matched_priority=False,
@@ -219,6 +229,7 @@ def grade_episode(state: IssueTriageState | Any) -> GraderResult:
 
     score = max(0.0, min(1.0, score))
     score += closure_bonus  # Add closure bonus on top
+    score = _normalize_task_score(score)
 
     notes: List[str] = []
     for bucket in (
@@ -256,7 +267,7 @@ def _grade_observation_without_target(state: Any) -> GraderResult:
     issue = getattr(state, "issue", None)
     if not issue:
         return GraderResult(
-            score=0.0,
+            score=_normalize_task_score(0.0),
             matched_labels=[],
             matched_assignee=False,
             matched_priority=False,
@@ -307,7 +318,7 @@ def _grade_observation_without_target(state: Any) -> GraderResult:
         efficiency = max(0.0, 1.0 - (step_count / max_steps))
         score += 0.05 * efficiency
 
-    score = max(0.0, min(1.0, score))
+    score = _normalize_task_score(score)
     if not notes:
         notes.append("No hidden_target present; graded on observable state.")
 
@@ -330,7 +341,7 @@ def _grade_observation(obs: Any) -> GraderResult:
     issue = getattr(obs, "issue", None)
     if not issue:
         return GraderResult(
-            score=0.0,
+            score=_normalize_task_score(0.0),
             matched_labels=[],
             matched_assignee=False,
             matched_priority=False,
