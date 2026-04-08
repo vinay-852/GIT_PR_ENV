@@ -64,28 +64,16 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     )
 
 
-def _strict_open01(value: float, epsilon: float = SCORE_EPSILON) -> float:
+def _strict_open01(value: float) -> float:
     try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        numeric = 0.5
+        final_value = float(value)
+    except Exception:
+        return 0.05
 
-    try:
-        eps = float(epsilon)
-    except (TypeError, ValueError):
-        eps = SCORE_EPSILON
+    if not math.isfinite(final_value):
+        return 0.05
 
-    if not math.isfinite(eps):
-        eps = SCORE_EPSILON
-
-    eps = max(0.05, min(0.49, eps))
-    safe_min = eps
-    safe_max = 1.0 - eps
-
-    if not math.isfinite(numeric):
-        numeric = 0.5
-
-    return max(safe_min, min(safe_max, numeric))
+    return max(0.01, min(0.99, final_value))
 
 
 def _load_episodes(args: argparse.Namespace):

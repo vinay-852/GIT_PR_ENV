@@ -611,17 +611,16 @@ class GraderResult(BaseModel):
     @field_validator("score", mode="before")
     @classmethod
     def _normalize_score(cls, value: Any) -> float:
-        """Normalize score into strict open interval (0, 1) by default."""
+        """Normalize score into the shared (0.01, 0.99) interval."""
         try:
             numeric = float(value)
-        except (TypeError, ValueError):
-            numeric = 0.5
+        except Exception:
+            return 0.05
 
         if not math.isfinite(numeric):
-            numeric = 0.5
+            return 0.05
 
-        eps = cls.SCORE_EPSILON
-        return min(1.0 - eps, max(eps, numeric))
+        return max(0.01, min(0.99, numeric))
 
 
 # -----------------------------

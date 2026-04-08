@@ -16,37 +16,27 @@ except ImportError:  # pragma: no cover
 
 
 # Keep a visible safety margin from both 0 and 1 so downstream formatting
-# or rounding never collapses values to the interval boundaries.
-TASK_SCORE_EPSILON = 5e-2
+# or rounding never collapses values to the interval boundaries. Historically
+# this used TASK_SCORE_EPSILON; normalization now uses fixed 0.01/0.99 bounds.
+TASK_SCORE_EPSILON = 5e-2  # legacy compatibility; unused
 
 
 def _normalize_task_score(raw_score: float, *, epsilon: float = TASK_SCORE_EPSILON) -> float:
     """
-    Clamp any score into the strict open interval (0, 1) with a generous buffer.
+    Clamp any score into the strict open interval (0, 1) using the shared 0.01/0.99 bounds.
+    Falls back to 0.05 if the input cannot be interpreted as a finite float.
     """
+    del epsilon  # preserve signature for callers without changing behavior
+
     try:
         score = float(raw_score)
-    except (TypeError, ValueError):
-        score = 0.5
+    except Exception:
+        return 0.05
 
     if not math.isfinite(score):
-        score = 0.5
+        return 0.05
 
-    eps = float(epsilon)
-    if not math.isfinite(eps):
-        eps = TASK_SCORE_EPSILON
-
-    # Force a healthy interior band so string formatting (e.g. two decimals)
-    # never snaps scores to exactly 0 or 1.
-    eps = max(0.05, min(0.49, eps))
-    safe_min = eps
-    safe_max = 1.0 - eps
-
-    if score <= safe_min:
-        return safe_min
-    if score >= safe_max:
-        return safe_max
-    return score
+    return max(0.01, min(0.99, score))
 
 
 def _resolve_state(state: Any) -> Any:
