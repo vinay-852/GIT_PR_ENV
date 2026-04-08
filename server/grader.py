@@ -15,14 +15,14 @@ except ImportError:  # pragma: no cover
     from models import GraderResult, HiddenGradingTarget, IssueStatus, IssueTriageState
 
 
-# Keep a visible safety margin from both 0 and 1.
-# This protects against downstream rounding/formatting.
-TASK_SCORE_EPSILON = 1e-2
+# Keep a visible safety margin from both 0 and 1 so downstream formatting
+# or rounding never collapses values to the interval boundaries.
+TASK_SCORE_EPSILON = 5e-2
 
 
 def _normalize_task_score(raw_score: float, *, epsilon: float = TASK_SCORE_EPSILON) -> float:
     """
-    Clamp any score into the strict open interval (0, 1).
+    Clamp any score into the strict open interval (0, 1) with a generous buffer.
     """
     try:
         score = float(raw_score)
@@ -35,9 +35,18 @@ def _normalize_task_score(raw_score: float, *, epsilon: float = TASK_SCORE_EPSIL
     eps = float(epsilon)
     if not math.isfinite(eps):
         eps = TASK_SCORE_EPSILON
-    eps = max(1e-6, min(0.49, eps))
 
-    return min(1.0 - eps, max(eps, score))
+    # Force a healthy interior band so string formatting (e.g. two decimals)
+    # never snaps scores to exactly 0 or 1.
+    eps = max(0.05, min(0.49, eps))
+    safe_min = eps
+    safe_max = 1.0 - eps
+
+    if score <= safe_min:
+        return safe_min
+    if score >= safe_max:
+        return safe_max
+    return score
 
 
 def _resolve_state(state: Any) -> Any:

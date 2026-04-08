@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import os
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -27,8 +28,7 @@ API_KEY = OPENAI_API_KEY or HF_TOKEN
 
 BENCHMARK = "GitHubIssueTriage"
 SUCCESS_SCORE_THRESHOLD = 0.80
-# Keep a visible margin away from 0 and 1 to survive downstream rounding.
-SCORE_EPSILON = 1e-3
+SCORE_EPSILON = 5e-2
 
 
 def _emit(tag: str, payload: Dict[str, Any]) -> None:
@@ -66,24 +66,26 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 
 def _strict_open01(value: float, epsilon: float = SCORE_EPSILON) -> float:
     try:
-        bounded = max(0.0, min(1.0, float(value)))
+        numeric = float(value)
     except (TypeError, ValueError):
-        bounded = 0.5
-    if not math.isfinite(bounded):
-        bounded = 0.5
+        numeric = 0.5
 
     try:
-        eps = max(1e-6, min(0.49, float(epsilon)))
+        eps = float(epsilon)
     except (TypeError, ValueError):
         eps = SCORE_EPSILON
+
     if not math.isfinite(eps):
         eps = SCORE_EPSILON
 
-    if bounded <= 0.0:
-        return eps
-    if bounded >= 1.0:
-        return 1.0 - eps
-    return bounded
+    eps = max(0.05, min(0.49, eps))
+    safe_min = eps
+    safe_max = 1.0 - eps
+
+    if not math.isfinite(numeric):
+        numeric = 0.5
+
+    return max(safe_min, min(safe_max, numeric))
 
 
 def _load_episodes(args: argparse.Namespace):
